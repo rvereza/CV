@@ -43,14 +43,14 @@ class LLaVATracker:
     ]
 
     def __init__(self, model_path: Optional[str] = None, use_metal: bool = True,
-                 simple_mode: bool = False):
+                 simple_mode: bool = True):
         """
         Initialize the LLaVA tracker
 
         Args:
             model_path: Path to LLaVA model (if None, downloads default)
             use_metal: Use Metal acceleration on macOS
-            simple_mode: Use simple detection-only mode (faster, no precise localization)
+            simple_mode: Use simple detection-only mode (DEFAULT, much faster)
         """
         print("Initializing LLaVA Object Tracker...")
         self.model = LLaVAModel(model_path=model_path, use_metal=use_metal)
@@ -64,7 +64,7 @@ class LLaVATracker:
         self.total_processing_time = 0.0
 
         if simple_mode:
-            print("⚡ Simple mode enabled - Detection only, no precise localization")
+            print("⚡ FAST MODE: Detection only (use --full for slow localization)")
 
         # Colors for different object types (BGR format)
         self.colors = {
@@ -88,26 +88,17 @@ class LLaVATracker:
                 return color
         return self.colors["default"]
 
-    def _show_processing_status(self, frame: np.ndarray, message: str,
-                                display_window: bool = False) -> np.ndarray:
-        """Show processing status on frame and optionally update window"""
-        status_frame = frame.copy()
-
-        # Semi-transparent overlay
-        overlay = status_frame.copy()
-        h, w = status_frame.shape[:2]
-        cv2.rectangle(overlay, (10, 10), (w-10, 100), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.7, status_frame, 0.3, 0, status_frame)
-
-        # Processing message
-        cv2.putText(status_frame, message, (20, 50),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-
-        if display_window:
-            cv2.imshow('LLaVA Object Tracker', status_frame)
-            cv2.waitKey(1)  # Process window events
-
-        return status_frame
+    def _update_display(self, frame: np.ndarray, message: str = "") -> None:
+        """Update display window to prevent freezing"""
+        if message:
+            # Add small status text in corner
+            display_frame = frame.copy()
+            cv2.putText(display_frame, message, (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            cv2.imshow('LLaVA Object Tracker', display_frame)
+        else:
+            cv2.imshow('LLaVA Object Tracker', frame)
+        cv2.waitKey(1)  # Process window events
 
     def process_frame(self, frame: np.ndarray, frame_number: int,
                      process_every_n: int = 5, display: bool = False) -> Tuple[np.ndarray, List[DetectedObject]]:
@@ -133,9 +124,9 @@ class LLaVATracker:
         # Step 1: Initial detection - ask LLaVA what objects are present
         print(f"Frame {frame_number}: Detecting objects...", end='', flush=True)
 
-        # Show processing status on display
+        # Update display to prevent freezing
         if display:
-            self._show_processing_status(frame, f"Frame {frame_number}: Detecting objects...", display)
+            self._update_display(frame, "Detecting...")
 
         detection_prompt = self.prompt_engine.create_detection_prompt()
         detection_response = self.model.generate(frame, detection_prompt, max_new_tokens=100)
@@ -179,10 +170,9 @@ class LLaVATracker:
                     # Ask LLaVA to locate the object
                     print(f"  Localizing {label} ({i}/{len(detected_labels)})...", end='', flush=True)
 
-                    # Show processing status
+                    # Update display to prevent freezing
                     if display:
-                        self._show_processing_status(frame,
-                            f"Localizing {label} ({i}/{len(detected_labels)})...", display)
+                        self._update_display(frame, f"Localizing {i}/{len(detected_labels)}")
 
                     location_prompt = self.prompt_engine.create_localization_prompt(label)
                     location_response = self.model.generate(frame, location_prompt, max_new_tokens=80)
@@ -424,20 +414,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Track objects in video
+  # Track objects in video (FAST mode by default)
   python llava_tracker.py --video path/to/video.mp4
-
-  # FAST MODE: Simple detection only (3x faster, recommended!)
-  python llava_tracker.py --video input.mp4 --simple
 
   # Save annotated video
   python llava_tracker.py --video input.mp4 --output output.mp4
 
-  # Process more frames for higher accuracy (slower)
-  python llava_tracker.py --video input.mp4 --interval 1
+  # Even faster: process fewer frames
+  python llava_tracker.py --video input.mp4 --interval 10
 
-  # Fast processing: simple mode + process fewer frames
-  python llava_tracker.py --video input.mp4 --simple --interval 10
+  # Full mode with localization (SLOW, not recommended)
+  python llava_tracker.py --video input.mp4 --full
 
   # Run without display (headless)
   python llava_tracker.py --video input.mp4 --no-display
@@ -452,8 +439,8 @@ Examples:
                        help='Path to LLaVA model (downloads default if not specified)')
     parser.add_argument('--interval', '-i', type=int, default=5,
                        help='Process every N frames (default: 5, lower is slower but more accurate)')
-    parser.add_argument('--simple', '-s', action='store_true',
-                       help='Simple mode: detection only, no localization (3x faster)')
+    parser.add_argument('--full', '-f', action='store_true',
+                       help='Full mode with localization (SLOW, not recommended)')
     parser.add_argument('--no-display', action='store_true',
                        help='Run without display window')
     parser.add_argument('--no-metal', action='store_true',
@@ -471,7 +458,7 @@ Examples:
         tracker = LLaVATracker(
             model_path=args.model,
             use_metal=not args.no_metal,
-            simple_mode=args.simple
+            simple_mode=not args.full  # Simple mode is default, --full disables it
         )
     except Exception as e:
         print(f"Error initializing tracker: {e}")
