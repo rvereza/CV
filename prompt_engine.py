@@ -36,7 +36,7 @@ DETECTED:"""
 
     def create_region_prompt(self, object_name: str) -> str:
         """
-        Create prompt for fast region-based location
+        Create prompt for fast region-based location (vertical only)
 
         Args:
             object_name: Name of object to locate
@@ -44,9 +44,9 @@ DETECTED:"""
         Returns:
             Region prompt string
         """
-        prompt = f"""Where is the {object_name}? Answer with ONE word:
-top-left, top-center, top-right, center-left, center, center-right, bottom-left, bottom-center, bottom-right
-REGION:"""
+        prompt = f"""Is the {object_name} at the top, middle, or bottom? Answer ONE word:
+top, middle, bottom
+VERTICAL:"""
 
         return prompt
 

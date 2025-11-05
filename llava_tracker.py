@@ -145,17 +145,18 @@ class LLaVATracker:
                 # Simple mode: Ask for region, place target there
                 h, w = frame.shape[:2]
                 for i, label in enumerate(detected_labels, 1):
-                    print(f"  Finding region for {label} ({i}/{len(detected_labels)})...", end='', flush=True)
+                    print(f"  Finding vertical position for {label} ({i}/{len(detected_labels)})...", end='', flush=True)
 
-                    # Ask for region (much faster than precise coordinates)
+                    # Ask for vertical position only (X axis is unreliable)
                     region_prompt = self.prompt_engine.create_region_prompt(label)
-                    region_response = self.model.generate(frame, region_prompt, max_new_tokens=10)
+                    region_response = self.model.generate(frame, region_prompt, max_new_tokens=5)
 
-                    # Parse region to get center coordinates
+                    # Parse to get coordinates (X centered, Y from response)
                     center_coords = self.location_parser.parse_region(region_response, w, h)
                     if center_coords:
                         center_x, center_y = center_coords
-                        print(f" ✓ region: {region_response.strip()[:20]} → ({center_x}, {center_y})")
+                        position = region_response.strip()[:10]
+                        print(f" ✓ {position} → Y={center_y}")
 
                         # Create bbox around center for compatibility
                         box_size = 60

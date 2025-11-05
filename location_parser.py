@@ -38,17 +38,11 @@ class LocationParser:
         "massive": {"scale": 0.80},
     }
 
-    # Region to coordinate mapping (as percentages)
-    REGIONS = {
-        "top-left": (25, 25),
-        "top-center": (50, 25),
-        "top-right": (75, 25),
-        "center-left": (25, 50),
-        "center": (50, 50),
-        "center-right": (75, 50),
-        "bottom-left": (25, 75),
-        "bottom-center": (50, 75),
-        "bottom-right": (75, 75),
+    # Vertical position mapping (X is centered, Y varies)
+    VERTICAL_POSITIONS = {
+        "top": 25,     # 25% from top
+        "middle": 50,  # 50% from top
+        "bottom": 75,  # 75% from top
     }
 
     def __init__(self):
@@ -57,10 +51,10 @@ class LocationParser:
 
     def parse_region(self, response: str, image_width: int, image_height: int) -> Optional[Tuple[int, int]]:
         """
-        Parse region name from response to center coordinates
+        Parse vertical position from response (X is always centered)
 
         Args:
-            response: LLaVA response containing region name
+            response: LLaVA response containing vertical position
             image_width: Image width in pixels
             image_height: Image height in pixels
 
@@ -69,14 +63,17 @@ class LocationParser:
         """
         response_lower = response.lower()
 
-        for region_name, (x_pct, y_pct) in self.REGIONS.items():
-            if region_name in response_lower:
-                center_x = int(x_pct * image_width / 100)
+        # X is always centered
+        center_x = image_width // 2
+
+        # Find Y position
+        for position_name, y_pct in self.VERTICAL_POSITIONS.items():
+            if position_name in response_lower:
                 center_y = int(y_pct * image_height / 100)
                 return (center_x, center_y)
 
         # Default to center if nothing found
-        return (image_width // 2, image_height // 2)
+        return (center_x, image_height // 2)
 
     def _validate_bbox(self, bbox: Tuple[int, int, int, int],
                       width: int, height: int) -> Optional[Tuple[int, int, int, int]]:
