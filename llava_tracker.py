@@ -113,9 +113,9 @@ class LLaVATracker:
         # Show "Processing..." on frame while waiting for model
         if display:
             processing_frame = frame.copy()
-            cv2.putText(processing_frame, "PROCESSING (may take 30-60 seconds)...",
+            cv2.putText(processing_frame, "PROCESSING (may take 45-90 seconds)...",
                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            cv2.putText(processing_frame, "TIP: Use --interval 30 for faster playback",
+            cv2.putText(processing_frame, "Asking: What + Where (horizontal + vertical)",
                        (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             cv2.imshow('LLaVA Object Tracker', processing_frame)
             cv2.waitKey(1)
@@ -145,36 +145,39 @@ class LLaVATracker:
                 # Simple mode: Ask for region, place target there
                 h, w = frame.shape[:2]
                 for i, label in enumerate(detected_labels, 1):
-                    print(f"  Finding vertical position for {label} ({i}/{len(detected_labels)})...", end='', flush=True)
+                    print(f"  Locating {label} ({i}/{len(detected_labels)})...", end='', flush=True)
 
-                    # Ask for vertical position only (X axis is unreliable)
-                    region_prompt = self.prompt_engine.create_region_prompt(label)
-                    region_response = self.model.generate(frame, region_prompt, max_new_tokens=5)
+                    # Ask for horizontal position
+                    h_prompt = self.prompt_engine.create_horizontal_prompt(label)
+                    h_response = self.model.generate(frame, h_prompt, max_new_tokens=5)
+                    h_pos = h_response.strip()[:10]
 
-                    # Parse to get coordinates (X centered, Y from response)
-                    center_coords = self.location_parser.parse_region(region_response, w, h)
-                    if center_coords:
-                        center_x, center_y = center_coords
-                        position = region_response.strip()[:10]
-                        print(f" ✓ {position} → Y={center_y}")
+                    # Ask for vertical position
+                    v_prompt = self.prompt_engine.create_vertical_prompt(label)
+                    v_response = self.model.generate(frame, v_prompt, max_new_tokens=5)
+                    v_pos = v_response.strip()[:10]
 
-                        # Create bbox around center for compatibility
-                        box_size = 60
-                        x1 = max(0, center_x - box_size)
-                        y1 = max(0, center_y - box_size)
-                        x2 = min(w, center_x + box_size)
-                        y2 = min(h, center_y + box_size)
-                        bbox = (x1, y1, x2, y2)
+                    # Parse both to get coordinates
+                    center_x, center_y = self.location_parser.parse_position(
+                        h_response, v_response, w, h
+                    )
+                    print(f" ✓ {h_pos}/{v_pos} → ({center_x}, {center_y})")
 
-                        detection = DetectedObject(
-                            label=label,
-                            bbox=bbox,
-                            confidence=0.8,
-                            frame_number=frame_number
-                        )
-                        current_detections.append(detection)
-                    else:
-                        print(f" ✗ (using center)")
+                    # Create bbox around center for compatibility
+                    box_size = 60
+                    x1 = max(0, center_x - box_size)
+                    y1 = max(0, center_y - box_size)
+                    x2 = min(w, center_x + box_size)
+                    y2 = min(h, center_y + box_size)
+                    bbox = (x1, y1, x2, y2)
+
+                    detection = DetectedObject(
+                        label=label,
+                        bbox=bbox,
+                        confidence=0.8,
+                        frame_number=frame_number
+                    )
+                    current_detections.append(detection)
             else:
                 # Full mode: Try to localize each object
                 for i, label in enumerate(detected_labels, 1):

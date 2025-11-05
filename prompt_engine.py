@@ -34,21 +34,43 @@ DETECTED:"""
 
         return prompt
 
-    def create_region_prompt(self, object_name: str) -> str:
+    def create_horizontal_prompt(self, object_name: str) -> str:
         """
-        Create prompt for fast region-based location (vertical only)
+        Create prompt for horizontal position
 
         Args:
             object_name: Name of object to locate
 
         Returns:
-            Region prompt string
+            Horizontal position prompt
+        """
+        prompt = f"""Is the {object_name} on the left, center, or right side? Answer ONE word:
+left, center, right
+HORIZONTAL:"""
+
+        return prompt
+
+    def create_vertical_prompt(self, object_name: str) -> str:
+        """
+        Create prompt for vertical position
+
+        Args:
+            object_name: Name of object to locate
+
+        Returns:
+            Vertical position prompt
         """
         prompt = f"""Is the {object_name} at the top, middle, or bottom? Answer ONE word:
 top, middle, bottom
 VERTICAL:"""
 
         return prompt
+
+    def create_region_prompt(self, object_name: str) -> str:
+        """
+        DEPRECATED: Use create_horizontal_prompt and create_vertical_prompt instead
+        """
+        return self.create_vertical_prompt(object_name)
 
     def create_localization_prompt(self, object_name: str) -> str:
         """

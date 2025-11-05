@@ -38,7 +38,14 @@ class LocationParser:
         "massive": {"scale": 0.80},
     }
 
-    # Vertical position mapping (X is centered, Y varies)
+    # Horizontal position mapping
+    HORIZONTAL_POSITIONS = {
+        "left": 25,    # 25% from left
+        "center": 50,  # 50% from left
+        "right": 75,   # 75% from left
+    }
+
+    # Vertical position mapping
     VERTICAL_POSITIONS = {
         "top": 25,     # 25% from top
         "middle": 50,  # 50% from top
@@ -49,17 +56,70 @@ class LocationParser:
         """Initialize location parser"""
         pass
 
-    def parse_region(self, response: str, image_width: int, image_height: int) -> Optional[Tuple[int, int]]:
+    def parse_horizontal(self, response: str) -> int:
         """
-        Parse vertical position from response (X is always centered)
+        Parse horizontal position percentage from response
+
+        Args:
+            response: LLaVA response containing horizontal position
+
+        Returns:
+            X position as percentage (25, 50, or 75)
+        """
+        response_lower = response.lower()
+
+        for position_name, x_pct in self.HORIZONTAL_POSITIONS.items():
+            if position_name in response_lower:
+                return x_pct
+
+        # Default to center
+        return 50
+
+    def parse_vertical(self, response: str) -> int:
+        """
+        Parse vertical position percentage from response
 
         Args:
             response: LLaVA response containing vertical position
+
+        Returns:
+            Y position as percentage (25, 50, or 75)
+        """
+        response_lower = response.lower()
+
+        for position_name, y_pct in self.VERTICAL_POSITIONS.items():
+            if position_name in response_lower:
+                return y_pct
+
+        # Default to middle
+        return 50
+
+    def parse_position(self, horizontal_response: str, vertical_response: str,
+                      image_width: int, image_height: int) -> Tuple[int, int]:
+        """
+        Parse position from separate horizontal and vertical responses
+
+        Args:
+            horizontal_response: Response for horizontal position
+            vertical_response: Response for vertical position
             image_width: Image width in pixels
             image_height: Image height in pixels
 
         Returns:
-            (center_x, center_y) or None
+            (center_x, center_y)
+        """
+        x_pct = self.parse_horizontal(horizontal_response)
+        y_pct = self.parse_vertical(vertical_response)
+
+        center_x = int(x_pct * image_width / 100)
+        center_y = int(y_pct * image_height / 100)
+
+        return (center_x, center_y)
+
+    def parse_region(self, response: str, image_width: int, image_height: int) -> Optional[Tuple[int, int]]:
+        """
+        DEPRECATED: Parse vertical position from response (X is always centered)
+        Use parse_position() instead for better accuracy
         """
         response_lower = response.lower()
 
