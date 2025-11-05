@@ -88,8 +88,29 @@ class LLaVATracker:
                 return color
         return self.colors["default"]
 
+    def _show_processing_status(self, frame: np.ndarray, message: str,
+                                display_window: bool = False) -> np.ndarray:
+        """Show processing status on frame and optionally update window"""
+        status_frame = frame.copy()
+
+        # Semi-transparent overlay
+        overlay = status_frame.copy()
+        h, w = status_frame.shape[:2]
+        cv2.rectangle(overlay, (10, 10), (w-10, 100), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.7, status_frame, 0.3, 0, status_frame)
+
+        # Processing message
+        cv2.putText(status_frame, message, (20, 50),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+
+        if display_window:
+            cv2.imshow('LLaVA Object Tracker', status_frame)
+            cv2.waitKey(1)  # Process window events
+
+        return status_frame
+
     def process_frame(self, frame: np.ndarray, frame_number: int,
-                     process_every_n: int = 5) -> Tuple[np.ndarray, List[DetectedObject]]:
+                     process_every_n: int = 5, display: bool = False) -> Tuple[np.ndarray, List[DetectedObject]]:
         """
         Process a single frame for object detection
 
@@ -97,6 +118,7 @@ class LLaVATracker:
             frame: Input video frame
             frame_number: Current frame number
             process_every_n: Process every N frames (for performance)
+            display: Whether to update display during processing
 
         Returns:
             Annotated frame and list of detected objects
@@ -110,6 +132,11 @@ class LLaVATracker:
 
         # Step 1: Initial detection - ask LLaVA what objects are present
         print(f"Frame {frame_number}: Detecting objects...", end='', flush=True)
+
+        # Show processing status on display
+        if display:
+            self._show_processing_status(frame, f"Frame {frame_number}: Detecting objects...", display)
+
         detection_prompt = self.prompt_engine.create_detection_prompt()
         detection_response = self.model.generate(frame, detection_prompt, max_new_tokens=100)
 
@@ -151,6 +178,12 @@ class LLaVATracker:
                 for i, label in enumerate(detected_labels, 1):
                     # Ask LLaVA to locate the object
                     print(f"  Localizing {label} ({i}/{len(detected_labels)})...", end='', flush=True)
+
+                    # Show processing status
+                    if display:
+                        self._show_processing_status(frame,
+                            f"Localizing {label} ({i}/{len(detected_labels)})...", display)
+
                     location_prompt = self.prompt_engine.create_localization_prompt(label)
                     location_response = self.model.generate(frame, location_prompt, max_new_tokens=80)
 
@@ -199,31 +232,71 @@ class LLaVATracker:
 
     def draw_detections(self, frame: np.ndarray,
                        detections: List[DetectedObject]) -> np.ndarray:
-        """Draw bounding boxes and labels on frame"""
+        """Draw target symbols for detected objects"""
         annotated = frame.copy()
 
         for det in detections:
             x1, y1, x2, y2 = det.bbox
             color = self.get_color_for_label(det.label)
 
-            # Draw bounding box
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+            # Calculate center of detection box
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
 
-            # Prepare label text
-            label_text = f"{det.label}"
+            if self.simple_mode:
+                # Draw target symbol (crosshair + circle)
+                target_size = 30  # Fixed size in pixels
 
-            # Draw label background
-            (text_width, text_height), baseline = cv2.getTextSize(
-                label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-            )
-            cv2.rectangle(annotated,
-                         (x1, y1 - text_height - 10),
-                         (x1 + text_width, y1),
-                         color, -1)
+                # Draw crosshair
+                cv2.line(annotated,
+                        (center_x - target_size, center_y),
+                        (center_x + target_size, center_y),
+                        color, 3)
+                cv2.line(annotated,
+                        (center_x, center_y - target_size),
+                        (center_x, center_y + target_size),
+                        color, 3)
 
-            # Draw label text
-            cv2.putText(annotated, label_text, (x1, y1 - 5),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                # Draw circles (targeting reticle)
+                cv2.circle(annotated, (center_x, center_y), 15, color, 3)
+                cv2.circle(annotated, (center_x, center_y), 3, color, -1)
+
+                # Draw label below the target
+                label_text = f"{det.label}"
+                (text_width, text_height), baseline = cv2.getTextSize(
+                    label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
+                )
+
+                # Label background
+                label_y = center_y + target_size + 30
+                cv2.rectangle(annotated,
+                             (center_x - text_width//2 - 5, label_y - text_height - 5),
+                             (center_x + text_width//2 + 5, label_y + 5),
+                             color, -1)
+
+                # Label text
+                cv2.putText(annotated, label_text,
+                           (center_x - text_width//2, label_y),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            else:
+                # Full mode: Draw traditional bounding box
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+
+                # Prepare label text
+                label_text = f"{det.label}"
+
+                # Draw label background
+                (text_width, text_height), baseline = cv2.getTextSize(
+                    label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                )
+                cv2.rectangle(annotated,
+                             (x1, y1 - text_height - 10),
+                             (x1 + text_width, y1),
+                             color, -1)
+
+                # Draw label text
+                cv2.putText(annotated, label_text, (x1, y1 - 5),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         return annotated
 
@@ -296,7 +369,7 @@ class LLaVATracker:
 
                     # Process frame
                     annotated_frame, detections = self.process_frame(
-                        frame, frame_number, process_every_n
+                        frame, frame_number, process_every_n, display
                     )
 
                     # Save to output video
