@@ -73,6 +73,18 @@ python video_object_detection.py /path/to/video.mp4
 
 ### Advanced Options
 
+**Show top N predictions per object (see alternative classifications):**
+```bash
+# Show top 3 predictions - useful to see what else YOLO thinks an object might be
+python video_object_detection.py video.mp4 --top-predictions 3
+
+# Example: If a tank is detected as "boat: 0.65", you'll also see:
+# [1] boat: 0.65
+# [2] truck: 0.42
+# [3] car: 0.38
+```
+This is especially useful when YOLO misclassifies objects (e.g., military vehicles as boats) because the COCO dataset doesn't include those classes.
+
 **Custom confidence threshold:**
 ```bash
 python video_object_detection.py video.mp4 --conf 0.5
@@ -145,6 +157,7 @@ Screenshots are saved as `screenshot_0001.jpg`, `screenshot_0002.jpg`, etc.
 | `--iou` | float | `0.45` | IOU threshold for NMS (0.0-1.0) |
 | `--scale` | float | `1.0` | Display window scale factor |
 | `--skip-frames` | int | `0` | Frames to skip (0 = process all) |
+| `--top-predictions` | int | `1` | Number of top predictions to show per object (1-5) |
 | `--stream` | flag | False | Stream YouTube videos instead of downloading |
 
 ## YouTube Video Processing
@@ -202,6 +215,33 @@ YOLOv8 can detect 80 object classes from the COCO dataset including:
 - **And many more...**
 
 For a complete list, see: [COCO Dataset Classes](https://github.com/ultralytics/ultralytics/blob/main/ultralytics/cfg/datasets/coco.yaml)
+
+### Understanding Misclassifications
+
+YOLO is trained on the COCO dataset which doesn't include many specialized objects like:
+- Military vehicles (tanks, armored vehicles)
+- Specialized equipment
+- Rare vehicles or objects
+
+When YOLO encounters objects not in its training data, it will classify them as the closest match it knows. For example:
+- **Tank → Boat**: Tanks have similar metal hull shapes and track patterns that YOLO might interpret as boat features
+- **Forklift → Truck**: Similar industrial vehicle characteristics
+- **Specialized vehicles → Car/Truck**: Default to common vehicle classes
+
+**Solution**: Use the `--top-predictions` flag to see what else YOLO thinks the object might be. This gives you insight into the model's uncertainty and alternative classifications.
+
+```bash
+python video_object_detection.py video.mp4 --top-predictions 3
+```
+
+You'll see stacked labels like:
+```
+[1] boat: 0.65
+[2] truck: 0.42
+[3] car: 0.38
+```
+
+This helps you understand that while YOLO is most confident it's a "boat" (65%), it also considers it might be a "truck" (42%) or "car" (38%).
 
 ## Troubleshooting
 
