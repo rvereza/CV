@@ -42,6 +42,50 @@ class LocationParser:
         """Initialize location parser"""
         pass
 
+    def _validate_bbox(self, bbox: Tuple[int, int, int, int],
+                      width: int, height: int) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Validate and fix bounding box
+
+        Args:
+            bbox: (x1, y1, x2, y2)
+            width: Image width
+            height: Image height
+
+        Returns:
+            Valid bbox or None
+        """
+        x1, y1, x2, y2 = bbox
+
+        # Ensure coordinates are within image bounds
+        x1 = max(0, min(x1, width))
+        y1 = max(0, min(y1, height))
+        x2 = max(0, min(x2, width))
+        y2 = max(0, min(y2, height))
+
+        # Ensure x2 > x1 and y2 > y1 (box has area)
+        if x2 <= x1 or y2 <= y1:
+            # Try to fix: if width/height is zero, use minimum size
+            min_size = 50  # Minimum 50 pixels
+            if x2 <= x1:
+                center_x = (x1 + x2) // 2
+                x1 = max(0, center_x - min_size)
+                x2 = min(width, center_x + min_size)
+            if y2 <= y1:
+                center_y = (y1 + y2) // 2
+                y1 = max(0, center_y - min_size)
+                y2 = min(height, center_y + min_size)
+
+        # Final check
+        if x2 <= x1 or y2 <= y1:
+            return None
+
+        # Check minimum size
+        if (x2 - x1) < 10 or (y2 - y1) < 10:
+            return None
+
+        return (x1, y1, x2, y2)
+
     def extract_detected_objects(self, response: str, target_objects: List[str]) -> List[str]:
         """
         Extract which objects were detected from response
@@ -110,22 +154,30 @@ class LocationParser:
         # Strategy 1: Explicit LOCATION: format
         bbox = self._parse_location_format(response, image_width, image_height)
         if bbox:
-            return bbox
+            bbox = self._validate_bbox(bbox, image_width, image_height)
+            if bbox:
+                return bbox
 
         # Strategy 2: BBOX: format
         bbox = self._parse_bbox_format(response, image_width, image_height)
         if bbox:
-            return bbox
+            bbox = self._validate_bbox(bbox, image_width, image_height)
+            if bbox:
+                return bbox
 
         # Strategy 3: Parse from natural language description
         bbox = self._parse_natural_language(response, image_width, image_height)
         if bbox:
-            return bbox
+            bbox = self._validate_bbox(bbox, image_width, image_height)
+            if bbox:
+                return bbox
 
         # Strategy 4: Look for numeric coordinates
         bbox = self._parse_numeric_coordinates(response, image_width, image_height)
         if bbox:
-            return bbox
+            bbox = self._validate_bbox(bbox, image_width, image_height)
+            if bbox:
+                return bbox
 
         return None
 

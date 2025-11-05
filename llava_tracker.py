@@ -103,8 +103,9 @@ class LLaVATracker:
         start_time = time.time()
 
         # Step 1: Initial detection - ask LLaVA what objects are present
+        print(f"Frame {frame_number}: Detecting objects...", end='', flush=True)
         detection_prompt = self.prompt_engine.create_detection_prompt()
-        detection_response = self.model.generate(frame, detection_prompt)
+        detection_response = self.model.generate(frame, detection_prompt, max_new_tokens=100)
 
         # Step 2: Parse which target objects were detected
         detected_labels = self.location_parser.extract_detected_objects(
@@ -112,15 +113,21 @@ class LLaVATracker:
             self.TARGET_OBJECTS
         )
 
+        if detected_labels:
+            print(f" Found {len(detected_labels)}: {', '.join(detected_labels)}")
+        else:
+            print(" No targets detected")
+
         # Step 3: For each detected object, get its location
         current_detections = []
 
         if detected_labels:
             # Use grid-based localization for better accuracy
-            for label in detected_labels:
+            for i, label in enumerate(detected_labels, 1):
                 # Ask LLaVA to locate the object
+                print(f"  Localizing {label} ({i}/{len(detected_labels)})...", end='', flush=True)
                 location_prompt = self.prompt_engine.create_localization_prompt(label)
-                location_response = self.model.generate(frame, location_prompt)
+                location_response = self.model.generate(frame, location_prompt, max_new_tokens=80)
 
                 # Parse the location from response
                 bbox = self.location_parser.parse_location(
@@ -130,6 +137,7 @@ class LLaVATracker:
                 )
 
                 if bbox:
+                    print(f" ✓ at {bbox}")
                     detection = DetectedObject(
                         label=label,
                         bbox=bbox,
@@ -137,6 +145,8 @@ class LLaVATracker:
                         frame_number=frame_number
                     )
                     current_detections.append(detection)
+                else:
+                    print(f" ✗ (could not parse location)")
 
         # Update tracking state
         self.detected_objects = current_detections
@@ -271,12 +281,6 @@ class LLaVATracker:
                     # Display
                     if display:
                         cv2.imshow('LLaVA Object Tracker', annotated_frame)
-
-                    # Print detections
-                    if detections and frame_number % process_every_n == 0:
-                        print(f"Frame {frame_number}: Found {len(detections)} object(s)")
-                        for det in detections:
-                            print(f"  - {det.label} at {det.bbox}")
 
                     frame_number += 1
 

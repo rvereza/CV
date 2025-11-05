@@ -29,23 +29,11 @@ class PromptEngine:
         Returns:
             Detection prompt string
         """
-        prompt = f"""Look carefully at this image and identify if any of these military vehicles or vessels are present:
-{self.object_list_str}
+        prompt = f"""Identify military vehicles/vessels in this image from: {self.object_list_str}
 
-Please respond in this exact format:
-DETECTED: [list the objects you see, separated by commas]
+Format: DETECTED: [list objects] or DETECTED: none
 
-If none are present, respond with:
-DETECTED: none
-
-Be specific and accurate. Look for:
-- War tanks or military tanks (tracked armored vehicles with turrets)
-- Airplanes or aircraft (fixed-wing flying vehicles)
-- Tug boats (small powerful boats for towing)
-- Tanker vessels (large ships for transporting liquids)
-- Destroyers or warships (military naval vessels)
-
-What do you detect?"""
+What do you see?"""
 
         return prompt
 
@@ -59,30 +47,10 @@ What do you detect?"""
         Returns:
             Localization prompt string
         """
-        prompt = f"""I need to locate the {object_name} in this image precisely.
-
-Please describe its location using this coordinate system:
-- Imagine the image is divided into a 100x100 grid
-- (0,0) is the top-left corner
-- (100,100) is the bottom-right corner
-
-Provide the location in this EXACT format:
-LOCATION: center_x, center_y, width, height
-
-Where:
-- center_x: horizontal position of the object's center (0-100)
-- center_y: vertical position of the object's center (0-100)
-- width: object's width as percentage of image width (0-100)
-- height: object's height as percentage of image height (0-100)
-
-Example response:
-LOCATION: 45, 30, 25, 15
-
-This would mean the {object_name} is:
-- Centered at 45% from left, 30% from top
-- Takes up 25% of image width, 15% of image height
-
-Now, where is the {object_name} located in this image?"""
+        prompt = f"""Locate the {object_name} using 0-100% coordinates.
+Format: LOCATION: center_x, center_y, width, height
+Example: LOCATION: 45, 30, 25, 15
+Where is it?"""
 
         return prompt
 
