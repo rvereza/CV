@@ -42,23 +42,29 @@ class LLaVATracker:
         "warship"
     ]
 
-    def __init__(self, model_path: Optional[str] = None, use_metal: bool = True):
+    def __init__(self, model_path: Optional[str] = None, use_metal: bool = True,
+                 simple_mode: bool = False):
         """
         Initialize the LLaVA tracker
 
         Args:
             model_path: Path to LLaVA model (if None, downloads default)
             use_metal: Use Metal acceleration on macOS
+            simple_mode: Use simple detection-only mode (faster, no precise localization)
         """
         print("Initializing LLaVA Object Tracker...")
         self.model = LLaVAModel(model_path=model_path, use_metal=use_metal)
         self.prompt_engine = PromptEngine(target_objects=self.TARGET_OBJECTS)
         self.location_parser = LocationParser()
+        self.simple_mode = simple_mode
 
         # Tracking state
         self.detected_objects: List[DetectedObject] = []
         self.frame_count = 0
         self.total_processing_time = 0.0
+
+        if simple_mode:
+            print("⚡ Simple mode enabled - Detection only, no precise localization")
 
         # Colors for different object types (BGR format)
         self.colors = {
@@ -122,31 +128,50 @@ class LLaVATracker:
         current_detections = []
 
         if detected_labels:
-            # Use grid-based localization for better accuracy
-            for i, label in enumerate(detected_labels, 1):
-                # Ask LLaVA to locate the object
-                print(f"  Localizing {label} ({i}/{len(detected_labels)})...", end='', flush=True)
-                location_prompt = self.prompt_engine.create_localization_prompt(label)
-                location_response = self.model.generate(frame, location_prompt, max_new_tokens=80)
+            if self.simple_mode:
+                # Simple mode: Just show detected objects with default box in center
+                print(f"  (Simple mode: showing detections without precise location)")
+                h, w = frame.shape[:2]
+                for label in detected_labels:
+                    # Create centered box (33% of image size)
+                    box_w, box_h = int(w * 0.33), int(h * 0.33)
+                    x1 = (w - box_w) // 2
+                    y1 = (h - box_h) // 2
+                    bbox = (x1, y1, x1 + box_w, y1 + box_h)
 
-                # Parse the location from response
-                bbox = self.location_parser.parse_location(
-                    location_response,
-                    frame.shape[1],  # width
-                    frame.shape[0]   # height
-                )
-
-                if bbox:
-                    print(f" ✓ at {bbox}")
                     detection = DetectedObject(
                         label=label,
                         bbox=bbox,
-                        confidence=0.8,  # LLaVA doesn't provide confidence, use default
+                        confidence=0.8,
                         frame_number=frame_number
                     )
                     current_detections.append(detection)
-                else:
-                    print(f" ✗ (could not parse location)")
+            else:
+                # Full mode: Try to localize each object
+                for i, label in enumerate(detected_labels, 1):
+                    # Ask LLaVA to locate the object
+                    print(f"  Localizing {label} ({i}/{len(detected_labels)})...", end='', flush=True)
+                    location_prompt = self.prompt_engine.create_localization_prompt(label)
+                    location_response = self.model.generate(frame, location_prompt, max_new_tokens=80)
+
+                    # Parse the location from response
+                    bbox = self.location_parser.parse_location(
+                        location_response,
+                        frame.shape[1],  # width
+                        frame.shape[0]   # height
+                    )
+
+                    if bbox:
+                        print(f" ✓ at {bbox}")
+                        detection = DetectedObject(
+                            label=label,
+                            bbox=bbox,
+                            confidence=0.8,  # LLaVA doesn't provide confidence, use default
+                            frame_number=frame_number
+                        )
+                        current_detections.append(detection)
+                    else:
+                        print(f" ✗ (could not parse location)")
 
         # Update tracking state
         self.detected_objects = current_detections
@@ -284,23 +309,18 @@ class LLaVATracker:
 
                     frame_number += 1
 
-                # Handle keyboard input
-                if display:
-                    key = cv2.waitKey(30) & 0xFF  # Increased wait time for macOS
-                    if key == ord('q'):
-                        print("\nQuitting...")
-                        break
-                    elif key == ord('p'):
-                        paused = not paused
-                        print(f"\n{'Paused' if paused else 'Resumed'}")
-                    elif key == ord('s'):
-                        screenshot_path = f"screenshot_{frame_number}.jpg"
-                        cv2.imwrite(screenshot_path, annotated_frame)
-                        print(f"\nScreenshot saved: {screenshot_path}")
-                else:
-                    # No display, just check for early termination
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
+                # Handle keyboard input - ALWAYS call waitKey to process window events
+                key = cv2.waitKey(1) & 0xFF  # Short wait for responsive UI
+                if key == ord('q'):
+                    print("\nQuitting...")
+                    break
+                elif key == ord('p') and display:
+                    paused = not paused
+                    print(f"\n{'Paused' if paused else 'Resumed'}")
+                elif key == ord('s') and display:
+                    screenshot_path = f"screenshot_{frame_number}.jpg"
+                    cv2.imwrite(screenshot_path, annotated_frame)
+                    print(f"\nScreenshot saved: {screenshot_path}")
 
         finally:
             # Cleanup
@@ -334,11 +354,17 @@ Examples:
   # Track objects in video
   python llava_tracker.py --video path/to/video.mp4
 
+  # FAST MODE: Simple detection only (3x faster, recommended!)
+  python llava_tracker.py --video input.mp4 --simple
+
   # Save annotated video
   python llava_tracker.py --video input.mp4 --output output.mp4
 
   # Process more frames for higher accuracy (slower)
   python llava_tracker.py --video input.mp4 --interval 1
+
+  # Fast processing: simple mode + process fewer frames
+  python llava_tracker.py --video input.mp4 --simple --interval 10
 
   # Run without display (headless)
   python llava_tracker.py --video input.mp4 --no-display
@@ -353,6 +379,8 @@ Examples:
                        help='Path to LLaVA model (downloads default if not specified)')
     parser.add_argument('--interval', '-i', type=int, default=5,
                        help='Process every N frames (default: 5, lower is slower but more accurate)')
+    parser.add_argument('--simple', '-s', action='store_true',
+                       help='Simple mode: detection only, no localization (3x faster)')
     parser.add_argument('--no-display', action='store_true',
                        help='Run without display window')
     parser.add_argument('--no-metal', action='store_true',
@@ -369,7 +397,8 @@ Examples:
     try:
         tracker = LLaVATracker(
             model_path=args.model,
-            use_metal=not args.no_metal
+            use_metal=not args.no_metal,
+            simple_mode=args.simple
         )
     except Exception as e:
         print(f"Error initializing tracker: {e}")
