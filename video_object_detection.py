@@ -37,33 +37,56 @@ class VideoObjectDetector:
 
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
+        self.youtube_url = None
+        self.stream_info = None
+        self.last_stream_refresh = 0
+        self.stream_refresh_interval = 300  # Refresh stream URL every 5 minutes
 
-    def get_youtube_stream_url(self, youtube_url):
+    def get_youtube_stream_url(self, youtube_url, retry_count=3):
         """
-        Extract the best video stream URL from YouTube.
+        Extract the best video stream URL from YouTube with retry logic.
 
         Args:
             youtube_url: YouTube video URL
+            retry_count: Number of retry attempts
 
         Returns:
-            Direct stream URL
+            Tuple of (stream_url, full_info_dict)
         """
         ydl_opts = {
-            'format': 'best[ext=mp4]/best',
+            'format': 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
+            'socket_timeout': 30,
+            'retries': 10,
         }
 
-        try:
-            print(f"Extracting YouTube video stream...")
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
-                video_url = info['url']
-                print(f"✓ Stream extracted successfully!")
-                return video_url
-        except Exception as e:
-            print(f"✗ Error extracting YouTube stream: {e}")
-            sys.exit(1)
+        for attempt in range(retry_count):
+            try:
+                if attempt > 0:
+                    print(f"  Retry attempt {attempt + 1}/{retry_count}...")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+
+                print(f"Extracting YouTube video stream...")
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(youtube_url, download=False)
+                    video_url = info['url']
+                    print(f"✓ Stream extracted successfully!")
+                    return video_url, info
+
+            except Exception as e:
+                if attempt < retry_count - 1:
+                    print(f"⚠ Attempt {attempt + 1} failed: {e}")
+                else:
+                    print(f"✗ Error extracting YouTube stream after {retry_count} attempts: {e}")
+                    print(f"\n💡 Suggestions:")
+                    print(f"  1. Check your internet connection")
+                    print(f"  2. Verify the YouTube URL is correct and video is available")
+                    print(f"  3. Update yt-dlp: pip install --upgrade yt-dlp")
+                    print(f"  4. Try using a local video file instead")
+                    sys.exit(1)
+
+        return None, None
 
     def open_video_source(self, source):
         """
@@ -77,7 +100,9 @@ class VideoObjectDetector:
         """
         # Check if source is a YouTube URL
         if 'youtube.com' in source or 'youtu.be' in source:
-            stream_url = self.get_youtube_stream_url(source)
+            self.youtube_url = source
+            stream_url, self.stream_info = self.get_youtube_stream_url(source)
+            self.last_stream_refresh = time.time()
             cap = cv2.VideoCapture(stream_url)
         else:
             # Assume it's a local file
@@ -103,9 +128,45 @@ class VideoObjectDetector:
         if total_frames > 0:
             print(f"  Total Frames: {total_frames}")
             print(f"  Duration: {total_frames/fps:.2f}s")
+        else:
+            print(f"  Duration: Live stream/Unknown")
         print(f"{'='*60}\n")
 
         return cap
+
+    def reconnect_youtube_stream(self, cap):
+        """
+        Reconnect to YouTube stream when connection is lost.
+
+        Args:
+            cap: Current VideoCapture object to release
+
+        Returns:
+            New VideoCapture object or None if reconnection failed
+        """
+        print("\n⚠ Stream connection lost. Attempting to reconnect...")
+
+        if cap is not None:
+            cap.release()
+
+        try:
+            # Get fresh stream URL
+            stream_url, self.stream_info = self.get_youtube_stream_url(self.youtube_url)
+            self.last_stream_refresh = time.time()
+
+            # Open new connection
+            new_cap = cv2.VideoCapture(stream_url)
+
+            if new_cap.isOpened():
+                print("✓ Successfully reconnected to stream!")
+                return new_cap
+            else:
+                print("✗ Failed to open reconnected stream")
+                return None
+
+        except Exception as e:
+            print(f"✗ Reconnection failed: {e}")
+            return None
 
     def draw_detections(self, frame, results):
         """
@@ -210,19 +271,30 @@ class VideoObjectDetector:
             skip_frames: Number of frames to skip between detections (0 = process all)
         """
         cap = self.open_video_source(source)
+        is_youtube = self.youtube_url is not None
 
         # Create window
         window_name = "YOLOv8 Object Detection"
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
         print("Starting object detection...")
-        print("Press 'q' to quit, 'p' to pause/resume, 's' to save screenshot\n")
+        print(f"\n{'='*60}")
+        print("Controls:")
+        print("  Q or ESC - Quit")
+        print("  P - Pause/Resume")
+        print("  S - Save screenshot")
+        if is_youtube:
+            print("  R - Manually reconnect stream")
+        print(f"{'='*60}\n")
 
         frame_num = 0
         fps = 0
         fps_counter = []
         paused = False
         screenshot_count = 0
+        consecutive_read_failures = 0
+        max_read_failures = 30  # Try 30 times before giving up
+        annotated_frame = None  # Keep last frame for screenshots
 
         try:
             while True:
@@ -231,79 +303,134 @@ class VideoObjectDetector:
 
                     # Read frame
                     ret, frame = cap.read()
+
+                    # Handle read failures (especially for YouTube streams)
                     if not ret:
-                        print("\n✓ Video ended or stream interrupted")
-                        break
+                        consecutive_read_failures += 1
 
-                    frame_num += 1
+                        if is_youtube and consecutive_read_failures < max_read_failures:
+                            # Try to reconnect for YouTube streams
+                            if consecutive_read_failures % 10 == 1:  # Try reconnecting every 10 failures
+                                new_cap = self.reconnect_youtube_stream(cap)
+                                if new_cap is not None:
+                                    cap = new_cap
+                                    consecutive_read_failures = 0
+                                    continue
+                                else:
+                                    time.sleep(0.1)
+                                    continue
+                            else:
+                                time.sleep(0.05)  # Brief wait before retry
+                                continue
+                        else:
+                            # Local file ended or too many YouTube failures
+                            if is_youtube:
+                                print(f"\n✗ Stream failed after {consecutive_read_failures} attempts")
+                                print("💡 Suggestions:")
+                                print("  1. Check your internet connection")
+                                print("  2. The video might have been removed or made private")
+                                print("  3. Try a different video")
+                            else:
+                                print("\n✓ Video ended")
+                            break
 
-                    # Skip frames if needed (for performance)
-                    if skip_frames > 0 and frame_num % (skip_frames + 1) != 0:
-                        continue
+                    # Successfully read frame
+                    if ret:
+                        consecutive_read_failures = 0  # Reset failure counter
+                        frame_num += 1
 
-                    # Run detection
-                    results = self.model.predict(
-                        frame,
-                        conf=self.conf_threshold,
-                        iou=self.iou_threshold,
-                        verbose=False
-                    )
+                        # Check if we need to refresh YouTube stream URL
+                        if is_youtube and (time.time() - self.last_stream_refresh) > self.stream_refresh_interval:
+                            print("\n⚠ Stream URL expired. Refreshing...")
+                            new_cap = self.reconnect_youtube_stream(cap)
+                            if new_cap is not None:
+                                cap = new_cap
 
-                    # Draw detections
-                    annotated_frame = self.draw_detections(frame, results)
+                        # Skip frames if needed (for performance)
+                        if skip_frames > 0 and frame_num % (skip_frames + 1) != 0:
+                            continue
 
-                    # Count detections
-                    detection_count = sum(len(result.boxes) for result in results)
-
-                    # Calculate FPS
-                    end_time = time.time()
-                    fps_counter.append(1 / (end_time - start_time))
-                    if len(fps_counter) > 30:
-                        fps_counter.pop(0)
-                    fps = sum(fps_counter) / len(fps_counter)
-
-                    # Draw info panel
-                    self.draw_info_panel(annotated_frame, fps, detection_count, frame_num)
-
-                    # Resize for display if needed
-                    if display_scale != 1.0:
-                        height, width = annotated_frame.shape[:2]
-                        new_width = int(width * display_scale)
-                        new_height = int(height * display_scale)
-                        annotated_frame = cv2.resize(
-                            annotated_frame,
-                            (new_width, new_height),
-                            interpolation=cv2.INTER_LINEAR
+                        # Run detection
+                        results = self.model.predict(
+                            frame,
+                            conf=self.conf_threshold,
+                            iou=self.iou_threshold,
+                            verbose=False
                         )
 
-                    # Display frame
-                    cv2.imshow(window_name, annotated_frame)
+                        # Draw detections
+                        annotated_frame = self.draw_detections(frame, results)
+
+                        # Count detections
+                        detection_count = sum(len(result.boxes) for result in results)
+
+                        # Calculate FPS
+                        end_time = time.time()
+                        fps_counter.append(1 / (end_time - start_time))
+                        if len(fps_counter) > 30:
+                            fps_counter.pop(0)
+                        fps = sum(fps_counter) / len(fps_counter)
+
+                        # Draw info panel
+                        self.draw_info_panel(annotated_frame, fps, detection_count, frame_num)
+
+                        # Resize for display if needed
+                        if display_scale != 1.0:
+                            height, width = annotated_frame.shape[:2]
+                            new_width = int(width * display_scale)
+                            new_height = int(height * display_scale)
+                            display_frame = cv2.resize(
+                                annotated_frame,
+                                (new_width, new_height),
+                                interpolation=cv2.INTER_LINEAR
+                            )
+                        else:
+                            display_frame = annotated_frame
+
+                        # Display frame
+                        cv2.imshow(window_name, display_frame)
 
                 # Handle keyboard input
                 key = cv2.waitKey(1) & 0xFF
 
-                if key == ord('q'):
+                if key == ord('q') or key == 27:  # q or ESC
                     print("\n✓ Quit requested by user")
                     break
                 elif key == ord('p'):
                     paused = not paused
                     status = "PAUSED" if paused else "RESUMED"
                     print(f"\n{status}")
-                elif key == ord('s'):
+                elif key == ord('s') and annotated_frame is not None:
                     screenshot_count += 1
                     screenshot_path = f"screenshot_{screenshot_count:04d}.jpg"
                     cv2.imwrite(screenshot_path, annotated_frame)
                     print(f"✓ Screenshot saved: {screenshot_path}")
+                elif key == ord('r') and is_youtube:
+                    print("\n⚠ Manual reconnection requested...")
+                    new_cap = self.reconnect_youtube_stream(cap)
+                    if new_cap is not None:
+                        cap = new_cap
+                        consecutive_read_failures = 0
 
         except KeyboardInterrupt:
             print("\n\n✓ Interrupted by user")
 
+        except Exception as e:
+            print(f"\n✗ Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
+
         finally:
             # Cleanup
-            cap.release()
+            if cap is not None:
+                cap.release()
             cv2.destroyAllWindows()
-            print(f"\nProcessing complete!")
+            print(f"\n{'='*60}")
+            print(f"Processing complete!")
             print(f"Total frames processed: {frame_num}")
+            if screenshot_count > 0:
+                print(f"Screenshots saved: {screenshot_count}")
+            print(f"{'='*60}")
 
 
 def main():
