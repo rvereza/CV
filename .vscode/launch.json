@@ -1,0 +1,55 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run with Video File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/video_object_detection.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/path/to/your/video.mp4"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Run with YouTube URL",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/video_object_detection.py",
+            "console": "integratedTerminal",
+            "args": [
+                "https://www.youtube.com/watch?v=VIDEO_ID"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Run with Custom Settings",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/video_object_detection.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/path/to/your/video.mp4",
+                "--model", "yolov8l.pt",
+                "--conf", "0.4",
+                "--scale", "0.75",
+                "--skip-frames", "1"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Run with Smaller Model (Faster)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/video_object_detection.py",
+            "console": "integratedTerminal",
+            "args": [
+                "/path/to/your/video.mp4",
+                "--model", "yolov8n.pt",
+                "--skip-frames", "0"
+            ],
+            "justMyCode": true
+        }
+    ]
+}
