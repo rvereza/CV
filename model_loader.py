@@ -3,13 +3,20 @@ LLaVA Model Loader with Metal Acceleration Support
 Handles loading and inference with LLaVA vision-language model
 """
 
+import os
+# Disable tokenizers parallelism warning
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+import warnings
 import torch
 import numpy as np
 from PIL import Image
 import platform
 from typing import Optional, Union
 import sys
-import os
+
+# Suppress specific warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 
 class LLaVAModel:
@@ -95,9 +102,10 @@ class LLaVAModel:
             print("Loading model (this may take a few minutes on first run)...")
             print("Downloading model files (~13GB)...")
 
-            # Load processor
+            # Load processor with fast tokenizer
             self.processor = LlavaProcessor.from_pretrained(
-                self.model_path
+                self.model_path,
+                use_fast=True
             )
 
             # Load model with appropriate settings for device
@@ -106,14 +114,14 @@ class LLaVAModel:
             }
 
             if self.device == "cuda":
-                load_kwargs["torch_dtype"] = torch.float16
+                load_kwargs["dtype"] = torch.float16
                 load_kwargs["device_map"] = "auto"
             elif self.device == "mps":
                 # MPS works better with float16
-                load_kwargs["torch_dtype"] = torch.float16
+                load_kwargs["dtype"] = torch.float16
             else:
                 # CPU - use float32
-                load_kwargs["torch_dtype"] = torch.float32
+                load_kwargs["dtype"] = torch.float32
 
             self.model = LlavaForConditionalGeneration.from_pretrained(
                 self.model_path,
