@@ -38,18 +38,22 @@ class LocationParser:
         "massive": {"scale": 0.80},
     }
 
-    # Horizontal position mapping
+    # Horizontal position mapping (5x5 grid)
     HORIZONTAL_POSITIONS = {
-        "left": 25,    # 25% from left
-        "center": 50,  # 50% from left
-        "right": 75,   # 75% from left
+        "far-left": 10,   # 10% from left
+        "left": 30,       # 30% from left
+        "center": 50,     # 50% from left
+        "right": 70,      # 70% from left
+        "far-right": 90,  # 90% from left
     }
 
-    # Vertical position mapping
+    # Vertical position mapping (5x5 grid)
     VERTICAL_POSITIONS = {
-        "top": 25,     # 25% from top
-        "middle": 50,  # 50% from top
-        "bottom": 75,  # 75% from top
+        "very-top": 10,     # 10% from top
+        "top": 30,          # 30% from top
+        "middle": 50,       # 50% from top
+        "bottom": 70,       # 70% from top
+        "very-bottom": 90,  # 90% from top
     }
 
     def __init__(self):
@@ -64,7 +68,7 @@ class LocationParser:
             response: LLaVA response containing horizontal position
 
         Returns:
-            X position as percentage (25, 50, or 75)
+            X position as percentage (10, 30, 50, 70, or 90)
         """
         response_lower = response.lower()
 
@@ -83,7 +87,7 @@ class LocationParser:
             response: LLaVA response containing vertical position
 
         Returns:
-            Y position as percentage (25, 50, or 75)
+            Y position as percentage (10, 30, 50, 70, or 90)
         """
         response_lower = response.lower()
 

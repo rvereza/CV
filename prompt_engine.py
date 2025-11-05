@@ -36,7 +36,7 @@ DETECTED:"""
 
     def create_horizontal_prompt(self, object_name: str) -> str:
         """
-        Create prompt for horizontal position
+        Create prompt for horizontal position (5x5 grid)
 
         Args:
             object_name: Name of object to locate
@@ -44,15 +44,15 @@ DETECTED:"""
         Returns:
             Horizontal position prompt
         """
-        prompt = f"""Is the {object_name} on the left, center, or right side? Answer ONE word:
-left, center, right
+        prompt = f"""Is the {object_name} on the far-left, left, center, right, or far-right? Answer ONE word:
+far-left, left, center, right, far-right
 HORIZONTAL:"""
 
         return prompt
 
     def create_vertical_prompt(self, object_name: str) -> str:
         """
-        Create prompt for vertical position
+        Create prompt for vertical position (5x5 grid)
 
         Args:
             object_name: Name of object to locate
@@ -60,8 +60,8 @@ HORIZONTAL:"""
         Returns:
             Vertical position prompt
         """
-        prompt = f"""Is the {object_name} at the top, middle, or bottom? Answer ONE word:
-top, middle, bottom
+        prompt = f"""Is the {object_name} at the very-top, top, middle, bottom, or very-bottom? Answer ONE word:
+very-top, top, middle, bottom, very-bottom
 VERTICAL:"""
 
         return prompt
