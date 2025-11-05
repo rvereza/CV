@@ -231,8 +231,22 @@ class LLaVATracker:
 
         # Create display window
         if display:
+            # macOS-specific: Start window thread first
+            import platform
+            if platform.system() == 'Darwin':
+                cv2.startWindowThread()
+
             cv2.namedWindow('LLaVA Object Tracker', cv2.WINDOW_NORMAL)
             cv2.resizeWindow('LLaVA Object Tracker', 1280, 720)
+
+            # Show initial frame to ensure window appears
+            print("Initializing display window...")
+            initial_frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+            cv2.putText(initial_frame, "Loading...", (550, 360),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.imshow('LLaVA Object Tracker', initial_frame)
+            cv2.waitKey(100)  # Longer wait to ensure window appears
+            print("Display window ready!\n")
 
         frame_number = 0
         paused = False
@@ -268,7 +282,7 @@ class LLaVATracker:
 
                 # Handle keyboard input
                 if display:
-                    key = cv2.waitKey(1) & 0xFF
+                    key = cv2.waitKey(30) & 0xFF  # Increased wait time for macOS
                     if key == ord('q'):
                         print("\nQuitting...")
                         break
@@ -296,8 +310,11 @@ class LLaVATracker:
             print(f"\n{'='*60}")
             print("Processing Summary:")
             print(f"  Total Frames Processed: {frame_number}")
-            print(f"  Average FPS: {frame_number/self.total_processing_time:.2f}")
-            print(f"  Total Processing Time: {self.total_processing_time:.2f}s")
+            if self.total_processing_time > 0:
+                print(f"  Average FPS: {frame_number/self.total_processing_time:.2f}")
+                print(f"  Total Processing Time: {self.total_processing_time:.2f}s")
+            else:
+                print(f"  No frames were processed (interrupted before completion)")
             if output_path:
                 print(f"  Output saved to: {output_path}")
             print(f"{'='*60}\n")

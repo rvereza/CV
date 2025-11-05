@@ -26,7 +26,8 @@ class LLaVAModel:
             use_metal: Enable Metal acceleration on macOS
         """
         self.device = self._setup_device(use_metal)
-        self.model_path = model_path or "liuhaotian/llava-v1.5-7b"
+        # Use the HuggingFace version which has proper structure
+        self.model_path = model_path or "llava-hf/llava-1.5-7b-hf"
 
         print(f"Loading LLaVA model: {self.model_path}")
         print(f"Device: {self.device}")
@@ -89,19 +90,18 @@ class LLaVAModel:
     def _load_model(self):
         """Load the LLaVA model and processor"""
         try:
-            from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
+            from transformers import LlavaProcessor, LlavaForConditionalGeneration
 
             print("Loading model (this may take a few minutes on first run)...")
+            print("Downloading model files (~13GB)...")
 
             # Load processor
-            self.processor = LlavaNextProcessor.from_pretrained(
-                self.model_path,
-                trust_remote_code=True
+            self.processor = LlavaProcessor.from_pretrained(
+                self.model_path
             )
 
             # Load model with appropriate settings for device
             load_kwargs = {
-                "trust_remote_code": True,
                 "low_cpu_mem_usage": True,
             }
 
@@ -109,13 +109,13 @@ class LLaVAModel:
                 load_kwargs["torch_dtype"] = torch.float16
                 load_kwargs["device_map"] = "auto"
             elif self.device == "mps":
-                # MPS works better with float32 in some cases
+                # MPS works better with float16
                 load_kwargs["torch_dtype"] = torch.float16
             else:
-                # CPU
+                # CPU - use float32
                 load_kwargs["torch_dtype"] = torch.float32
 
-            self.model = LlavaNextForConditionalGeneration.from_pretrained(
+            self.model = LlavaForConditionalGeneration.from_pretrained(
                 self.model_path,
                 **load_kwargs
             )
@@ -126,52 +126,19 @@ class LLaVAModel:
 
             self.model.eval()
 
-            print("Model loaded successfully!")
+            print("✓ Model loaded successfully!")
 
         except ImportError:
             print("\nError: LLaVA requires transformers library")
             print("Installing required packages...")
             self._install_dependencies()
             # Try again
-            from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
+            from transformers import LlavaProcessor, LlavaForConditionalGeneration
             self._load_model()
 
         except Exception as e:
             print(f"\nFailed to load LLaVA model: {e}")
-            print("\nTrying alternative LLaVA version...")
-
-            # Fallback to standard LLaVA
-            try:
-                from transformers import LlavaProcessor, LlavaForConditionalGeneration
-
-                self.processor = LlavaProcessor.from_pretrained(
-                    "llava-hf/llava-1.5-7b-hf",
-                    trust_remote_code=True
-                )
-
-                load_kwargs = {
-                    "trust_remote_code": True,
-                    "low_cpu_mem_usage": True,
-                }
-
-                if self.device == "cuda":
-                    load_kwargs["torch_dtype"] = torch.float16
-                    load_kwargs["device_map"] = "auto"
-
-                self.model = LlavaForConditionalGeneration.from_pretrained(
-                    "llava-hf/llava-1.5-7b-hf",
-                    **load_kwargs
-                )
-
-                if self.device != "cuda":
-                    self.model = self.model.to(self.device)
-
-                self.model.eval()
-                print("Fallback model loaded successfully!")
-
-            except Exception as e2:
-                print(f"Failed to load fallback model: {e2}")
-                raise RuntimeError("Could not load any LLaVA model variant")
+            raise RuntimeError(f"Could not load LLaVA model: {e}")
 
     def preprocess_image(self, image: Union[np.ndarray, Image.Image]) -> Image.Image:
         """
