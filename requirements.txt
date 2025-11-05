@@ -1,0 +1,16 @@
+# YOLOv8 Object Detection Requirements
+
+# Core dependencies
+ultralytics>=8.0.0        # YOLOv8 framework
+opencv-python>=4.8.0      # Computer vision library
+numpy>=1.24.0             # Array operations
+
+# YouTube video streaming
+yt-dlp>=2023.10.0         # YouTube video downloader/streamer
+
+# Optional but recommended for better performance
+torch>=2.0.0              # PyTorch (required by ultralytics)
+torchvision>=0.15.0       # PyTorch vision utilities
+
+# For GPU acceleration (optional - install separately if needed)
+# torch with CUDA support: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
