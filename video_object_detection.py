@@ -433,6 +433,49 @@ class VideoObjectDetector:
             print(f"{'='*60}")
 
 
+def get_video_source_interactive():
+    """
+    Prompt user for video source interactively.
+
+    Returns:
+        Video source path or URL
+    """
+    print("\n" + "="*60)
+    print("YOLOv8 Video Object Detection")
+    print("="*60)
+    print("\nPlease provide a video source:")
+    print("  1. YouTube URL (e.g., https://www.youtube.com/watch?v=VIDEO_ID)")
+    print("  2. Local video file path (e.g., /path/to/video.mp4)")
+    print("="*60)
+
+    while True:
+        source = input("\nEnter video source: ").strip()
+
+        if not source:
+            print("⚠ Error: Please enter a valid source")
+            continue
+
+        # Remove quotes if user included them
+        source = source.strip('"').strip("'")
+
+        # Check if it's a YouTube URL
+        if 'youtube.com' in source or 'youtu.be' in source:
+            print(f"✓ YouTube URL detected: {source}")
+            return source
+
+        # Check if it's a local file
+        if Path(source).exists():
+            print(f"✓ Local video file found: {source}")
+            return source
+        else:
+            # Ask user to confirm if file doesn't exist
+            print(f"⚠ Warning: File not found at '{source}'")
+            retry = input("Would you like to try again? (y/n): ").strip().lower()
+            if retry != 'y':
+                print("Using provided path anyway (in case it's a special path)...")
+                return source
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -440,10 +483,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Process YouTube video
+  # Run with interactive prompt
+  python video_object_detection.py
+
+  # Process YouTube video via command line
   python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID"
 
-  # Process local video file
+  # Process local video file via command line
   python video_object_detection.py /path/to/video.mp4
 
   # Process with custom confidence threshold
@@ -459,8 +505,9 @@ Examples:
 
     parser.add_argument(
         'source',
+        nargs='?',
         type=str,
-        help='Video source (YouTube URL or path to local video file)'
+        help='Video source (YouTube URL or path to local video file). If not provided, will prompt interactively.'
     )
 
     parser.add_argument(
@@ -501,6 +548,12 @@ Examples:
 
     args = parser.parse_args()
 
+    # Get video source - either from command line or interactive prompt
+    if args.source:
+        source = args.source
+    else:
+        source = get_video_source_interactive()
+
     # Create detector
     detector = VideoObjectDetector(
         model_name=args.model,
@@ -510,7 +563,7 @@ Examples:
 
     # Process video
     detector.process_video(
-        source=args.source,
+        source=source,
         display_scale=args.scale,
         skip_frames=args.skip_frames
     )

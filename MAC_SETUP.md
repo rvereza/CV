@@ -98,7 +98,23 @@ brew install opencv
 
 ### Step 6: Run the Script
 
-#### Method 1: Using VS Code's Run Button (Easiest)
+#### Method 1: Interactive Mode (Easiest for Beginners)
+
+1. Open Terminal in VS Code (`` Ctrl+` ``)
+2. Make sure virtual environment is activated (you should see `(venv)`)
+3. Run the script without any arguments:
+
+```bash
+python video_object_detection.py
+```
+
+4. The script will prompt you to enter:
+   - A YouTube URL (e.g., `https://www.youtube.com/watch?v=VIDEO_ID`)
+   - Or a local video file path
+
+5. Simply paste your URL or file path and press Enter!
+
+#### Method 2: Using VS Code's Run Button
 
 1. Open `video_object_detection.py` in VS Code
 2. Click the "Run and Debug" icon in the left sidebar (or press `Cmd+Shift+D`)
@@ -114,11 +130,11 @@ brew install opencv
 
 5. Click the green "Start Debugging" button (or press `F5`)
 
-#### Method 2: Using Integrated Terminal
+#### Method 3: Using Integrated Terminal (Command Line)
 
 1. Open Terminal in VS Code (`` Ctrl+` ``)
 2. Make sure virtual environment is activated (you should see `(venv)`)
-3. Run the script:
+3. Run the script with arguments:
 
 **For a local video file:**
 ```bash
@@ -134,13 +150,6 @@ python video_object_detection.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ```bash
 python video_object_detection.py video.mp4 --model yolov8l.pt --conf 0.4 --scale 0.75
 ```
-
-#### Method 3: Right-Click Run
-
-1. Open `video_object_detection.py`
-2. Right-click anywhere in the editor
-3. Select "Run Python File in Terminal"
-4. Note: This won't pass arguments, so you'll need to modify the script or use Terminal
 
 ## Common Issues on Mac
 
@@ -236,6 +245,12 @@ python video_object_detection.py test_video.mp4 --model yolov8n.pt
 - `Shift+Cmd+F` - Search across files
 
 ## Example Commands
+
+### Interactive mode (easiest):
+```bash
+python video_object_detection.py
+# Then follow the prompts to enter your YouTube URL or video file path
+```
 
 ### Basic usage:
 ```bash

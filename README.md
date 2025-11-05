@@ -40,7 +40,19 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 ## Usage
 
-### Basic Usage
+### Interactive Mode (Easiest)
+
+Simply run the script without any arguments and it will prompt you for the video source:
+
+```bash
+python video_object_detection.py
+```
+
+You'll be prompted to enter:
+- A YouTube URL (e.g., `https://www.youtube.com/watch?v=VIDEO_ID`)
+- Or a local video file path (e.g., `/path/to/video.mp4`)
+
+### Basic Usage (Command Line)
 
 **Process a YouTube video:**
 ```bash
