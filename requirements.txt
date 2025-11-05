@@ -1,0 +1,21 @@
+# LLaVA Object Tracking System Requirements
+
+# Core dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# Transformers and LLaVA
+transformers>=4.37.0
+accelerate>=0.25.0
+sentencepiece>=0.1.99
+protobuf>=4.25.0
+
+# Optional: For better performance
+# bitsandbytes>=0.41.0  # For 8-bit quantization
+# flash-attn>=2.0.0     # For faster attention (CUDA only)
+
+# Utilities
+tqdm>=4.66.0
