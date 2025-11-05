@@ -38,9 +38,45 @@ class LocationParser:
         "massive": {"scale": 0.80},
     }
 
+    # Region to coordinate mapping (as percentages)
+    REGIONS = {
+        "top-left": (25, 25),
+        "top-center": (50, 25),
+        "top-right": (75, 25),
+        "center-left": (25, 50),
+        "center": (50, 50),
+        "center-right": (75, 50),
+        "bottom-left": (25, 75),
+        "bottom-center": (50, 75),
+        "bottom-right": (75, 75),
+    }
+
     def __init__(self):
         """Initialize location parser"""
         pass
+
+    def parse_region(self, response: str, image_width: int, image_height: int) -> Optional[Tuple[int, int]]:
+        """
+        Parse region name from response to center coordinates
+
+        Args:
+            response: LLaVA response containing region name
+            image_width: Image width in pixels
+            image_height: Image height in pixels
+
+        Returns:
+            (center_x, center_y) or None
+        """
+        response_lower = response.lower()
+
+        for region_name, (x_pct, y_pct) in self.REGIONS.items():
+            if region_name in response_lower:
+                center_x = int(x_pct * image_width / 100)
+                center_y = int(y_pct * image_height / 100)
+                return (center_x, center_y)
+
+        # Default to center if nothing found
+        return (image_width // 2, image_height // 2)
 
     def _validate_bbox(self, bbox: Tuple[int, int, int, int],
                       width: int, height: int) -> Optional[Tuple[int, int, int, int]]:

@@ -142,27 +142,38 @@ class LLaVATracker:
 
         if detected_labels:
             if self.simple_mode:
-                # Simple mode: Just show detected objects with default box in center
+                # Simple mode: Ask for region, place target there
                 h, w = frame.shape[:2]
-                for label in detected_labels:
-                    # Create centered box (33% of image size)
-                    box_w, box_h = int(w * 0.33), int(h * 0.33)
-                    x1 = (w - box_w) // 2
-                    y1 = (h - box_h) // 2
-                    bbox = (x1, y1, x1 + box_w, y1 + box_h)
+                for i, label in enumerate(detected_labels, 1):
+                    print(f"  Finding region for {label} ({i}/{len(detected_labels)})...", end='', flush=True)
 
-                    # Calculate center for target symbol
-                    center_x = (x1 + x1 + box_w) // 2
-                    center_y = (y1 + y1 + box_h) // 2
+                    # Ask for region (much faster than precise coordinates)
+                    region_prompt = self.prompt_engine.create_region_prompt(label)
+                    region_response = self.model.generate(frame, region_prompt, max_new_tokens=10)
 
-                    detection = DetectedObject(
-                        label=label,
-                        bbox=bbox,
-                        confidence=0.8,
-                        frame_number=frame_number
-                    )
-                    current_detections.append(detection)
-                    print(f"  Target symbol for '{label}' at center ({center_x}, {center_y})")
+                    # Parse region to get center coordinates
+                    center_coords = self.location_parser.parse_region(region_response, w, h)
+                    if center_coords:
+                        center_x, center_y = center_coords
+                        print(f" ✓ region: {region_response.strip()[:20]} → ({center_x}, {center_y})")
+
+                        # Create bbox around center for compatibility
+                        box_size = 60
+                        x1 = max(0, center_x - box_size)
+                        y1 = max(0, center_y - box_size)
+                        x2 = min(w, center_x + box_size)
+                        y2 = min(h, center_y + box_size)
+                        bbox = (x1, y1, x2, y2)
+
+                        detection = DetectedObject(
+                            label=label,
+                            bbox=bbox,
+                            confidence=0.8,
+                            frame_number=frame_number
+                        )
+                        current_detections.append(detection)
+                    else:
+                        print(f" ✗ (using center)")
             else:
                 # Full mode: Try to localize each object
                 for i, label in enumerate(detected_labels, 1):
@@ -221,28 +232,30 @@ class LLaVATracker:
         annotated = frame.copy()
 
         if self.simple_mode and detections:
-            # Simple mode: Show red target symbol in center + list of detections
+            # Simple mode: Show red target symbols at detected locations + list
             h, w = frame.shape[:2]
-            center_x = w // 2
-            center_y = h // 2
-
-            # Draw RED target symbol (military style)
             target_size = 40
             red_color = (0, 0, 255)  # RED in BGR
 
-            # Crosshair
-            cv2.line(annotated,
-                    (center_x - target_size, center_y),
-                    (center_x + target_size, center_y),
-                    red_color, 4)
-            cv2.line(annotated,
-                    (center_x, center_y - target_size),
-                    (center_x, center_y + target_size),
-                    red_color, 4)
+            # Draw RED target symbol for each detection
+            for det in detections:
+                x1, y1, x2, y2 = det.bbox
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
 
-            # Circles (targeting reticle)
-            cv2.circle(annotated, (center_x, center_y), 20, red_color, 4)
-            cv2.circle(annotated, (center_x, center_y), 4, red_color, -1)
+                # Crosshair
+                cv2.line(annotated,
+                        (center_x - target_size, center_y),
+                        (center_x + target_size, center_y),
+                        red_color, 4)
+                cv2.line(annotated,
+                        (center_x, center_y - target_size),
+                        (center_x, center_y + target_size),
+                        red_color, 4)
+
+                # Circles (targeting reticle)
+                cv2.circle(annotated, (center_x, center_y), 20, red_color, 4)
+                cv2.circle(annotated, (center_x, center_y), 4, red_color, -1)
 
             # Draw detection list in corner
             y_offset = 30
