@@ -113,8 +113,10 @@ class LLaVATracker:
         # Show "Processing..." on frame while waiting for model
         if display:
             processing_frame = frame.copy()
-            cv2.putText(processing_frame, "PROCESSING... (this takes 3-6 seconds)",
+            cv2.putText(processing_frame, "PROCESSING (may take 30-60 seconds)...",
                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.putText(processing_frame, "TIP: Use --interval 30 for faster playback",
+                       (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             cv2.imshow('LLaVA Object Tracker', processing_frame)
             cv2.waitKey(1)
 
@@ -122,7 +124,7 @@ class LLaVATracker:
         print(f"Frame {frame_number}: Detecting objects...", end='', flush=True)
 
         detection_prompt = self.prompt_engine.create_detection_prompt()
-        detection_response = self.model.generate(frame, detection_prompt, max_new_tokens=100)
+        detection_response = self.model.generate(frame, detection_prompt, max_new_tokens=30)
 
         # Step 2: Parse which target objects were detected
         detected_labels = self.location_parser.extract_detected_objects(
@@ -168,7 +170,7 @@ class LLaVATracker:
                     print(f"  Localizing {label} ({i}/{len(detected_labels)})...", end='', flush=True)
 
                     location_prompt = self.prompt_engine.create_localization_prompt(label)
-                    location_response = self.model.generate(frame, location_prompt, max_new_tokens=80)
+                    location_response = self.model.generate(frame, location_prompt, max_new_tokens=20)
 
                     # Parse the location from response
                     bbox = self.location_parser.parse_location(
@@ -431,8 +433,8 @@ Examples:
                        help='Path to save annotated video (optional)')
     parser.add_argument('--model', '-m', type=str, default=None,
                        help='Path to LLaVA model (downloads default if not specified)')
-    parser.add_argument('--interval', '-i', type=int, default=5,
-                       help='Process every N frames (default: 5, lower is slower but more accurate)')
+    parser.add_argument('--interval', '-i', type=int, default=30,
+                       help='Process every N frames (default: 30, lower is slower but more accurate)')
     parser.add_argument('--full', '-f', action='store_true',
                        help='Full mode with localization (SLOW, not recommended)')
     parser.add_argument('--no-display', action='store_true',

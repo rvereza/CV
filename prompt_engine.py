@@ -29,11 +29,8 @@ class PromptEngine:
         Returns:
             Detection prompt string
         """
-        prompt = f"""Identify military vehicles/vessels in this image from: {self.object_list_str}
-
-Format: DETECTED: [list objects] or DETECTED: none
-
-What do you see?"""
+        prompt = f"""List any: {self.object_list_str}
+DETECTED:"""
 
         return prompt
 
@@ -47,10 +44,7 @@ What do you see?"""
         Returns:
             Localization prompt string
         """
-        prompt = f"""Locate the {object_name} using 0-100% coordinates.
-Format: LOCATION: center_x, center_y, width, height
-Example: LOCATION: 45, 30, 25, 15
-Where is it?"""
+        prompt = f"""Where is {object_name}? LOCATION:"""
 
         return prompt
 
