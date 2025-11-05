@@ -54,10 +54,17 @@ You'll be prompted to enter:
 
 ### Basic Usage (Command Line)
 
-**Process a YouTube video:**
+**Process a YouTube video (downloads first for reliability):**
 ```bash
 python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
+Note: YouTube videos are downloaded to your temp directory first for reliable processing. This prevents streaming connection errors.
+
+**Stream YouTube video without downloading:**
+```bash
+python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID" --stream
+```
+Warning: Streaming may encounter "Cannot reuse HTTP connection" errors. Downloading is recommended.
 
 **Process a local video file:**
 ```bash
@@ -121,9 +128,10 @@ python video_object_detection.py "https://youtube.com/watch?v=xyz" \
 
 While the detection window is open:
 
-- **'q'** - Quit the application
+- **'q'** or **ESC** - Quit the application
 - **'p'** - Pause/Resume video processing
 - **'s'** - Save screenshot of current frame
+- **'r'** - Manually reconnect stream (YouTube streaming mode only)
 
 Screenshots are saved as `screenshot_0001.jpg`, `screenshot_0002.jpg`, etc.
 
@@ -131,12 +139,36 @@ Screenshots are saved as `screenshot_0001.jpg`, `screenshot_0002.jpg`, etc.
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `source` | str | Required | Video source (YouTube URL or file path) |
+| `source` | str | Optional | Video source (YouTube URL or file path). Prompts if not provided. |
 | `--model` | str | `yolov8l.pt` | YOLOv8 model (n/s/m/l/x) |
 | `--conf` | float | `0.25` | Confidence threshold (0.0-1.0) |
 | `--iou` | float | `0.45` | IOU threshold for NMS (0.0-1.0) |
 | `--scale` | float | `1.0` | Display window scale factor |
 | `--skip-frames` | int | `0` | Frames to skip (0 = process all) |
+| `--stream` | flag | False | Stream YouTube videos instead of downloading |
+
+## YouTube Video Processing
+
+### Download Mode (Default - Recommended)
+
+By default, YouTube videos are downloaded to your system's temp directory before processing. This provides:
+
+- **Reliability**: No streaming connection errors or interruptions
+- **Performance**: Faster processing without network delays
+- **Caching**: Videos are cached and reused if you run the script again
+- **Quality**: Consistent quality throughout processing
+
+Downloaded videos are stored in your temp directory (e.g., `/tmp` on Mac/Linux) and can be safely deleted later.
+
+### Streaming Mode (Optional)
+
+Use the `--stream` flag to stream YouTube videos directly without downloading:
+
+```bash
+python video_object_detection.py "URL" --stream
+```
+
+Note: Streaming mode may encounter connection errors like "Cannot reuse HTTP connection" and is less reliable, especially for longer videos.
 
 ## Performance Tips
 
@@ -145,6 +177,7 @@ Screenshots are saved as `screenshot_0001.jpg`, `screenshot_0002.jpg`, etc.
 3. **Skip frames**: Use `--skip-frames 1` or higher for real-time performance on slower hardware
 4. **Lower resolution**: Use `--scale 0.5` to reduce display overhead
 5. **Increase confidence**: Use `--conf 0.5` to reduce false positives and processing time
+6. **Download YouTube videos**: Use default download mode for best reliability (automatic)
 
 ## Example Performance
 
