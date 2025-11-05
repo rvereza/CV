@@ -20,7 +20,7 @@ import os
 class VideoObjectDetector:
     """Fast and robust object detection for video streams."""
 
-    def __init__(self, model_name='yolov8l.pt', conf_threshold=0.25, iou_threshold=0.45, top_predictions=1):
+    def __init__(self, model_name='yolov8l.pt', conf_threshold=0.25, iou_threshold=0.45, show_all_detections=False):
         """
         Initialize the detector with YOLOv8 model.
 
@@ -28,7 +28,7 @@ class VideoObjectDetector:
             model_name: YOLOv8 model to use (default: yolov8l.pt for large model)
             conf_threshold: Confidence threshold for detections
             iou_threshold: IOU threshold for NMS
-            top_predictions: Number of top class predictions to display per object (default: 1)
+            show_all_detections: If True, show all detections including overlapping ones (default: False)
         """
         print(f"Loading {model_name} model...")
         try:
@@ -40,7 +40,7 @@ class VideoObjectDetector:
 
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
-        self.top_predictions = top_predictions
+        self.show_all_detections = show_all_detections
         self.youtube_url = None
         self.stream_info = None
         self.last_stream_refresh = 0
@@ -347,58 +347,74 @@ class VideoObjectDetector:
         """
         annotated_frame = frame.copy()
 
-        # If showing multiple predictions per object, use different approach
-        if self.top_predictions > 1:
-            detections = self.get_multiple_class_predictions(frame)
+        # If showing all detections, detect all possible objects (disable aggressive NMS)
+        if self.show_all_detections:
+            # Run detection with very low NMS threshold to keep overlapping boxes
+            all_results = self.model.predict(
+                frame,
+                conf=self.conf_threshold,
+                iou=0.05,  # Very low IOU = keeps overlapping boxes
+                max_det=300,  # Increase max detections
+                verbose=False
+            )
 
-            for detection in detections:
-                x1, y1, x2, y2 = detection['box']
-                predictions = detection['predictions']
+            if len(all_results) == 0 or len(all_results[0].boxes) == 0:
+                return annotated_frame
 
-                # Draw bounding box
-                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            # Show ALL detections as individual boxes
+            for result in all_results:
+                boxes = result.boxes
+                for box in boxes:
+                    # Get box coordinates
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                # Draw multiple predictions as stacked labels
-                font_scale = 0.45
-                y_offset = y1
+                    # Get confidence and class
+                    conf = float(box.conf[0])
+                    cls = int(box.cls[0])
+                    class_name = self.model.names[cls]
 
-                for rank, (class_name, conf) in enumerate(predictions, 1):
-                    label = f"[{rank}] {class_name}: {conf:.2f}"
+                    # Use different colors for different confidence levels
+                    if conf >= 0.6:
+                        color = (0, 255, 0)  # Green - high confidence
+                    elif conf >= 0.4:
+                        color = (0, 200, 200)  # Yellow - medium confidence
+                    else:
+                        color = (0, 150, 255)  # Orange - lower confidence
 
-                    # Calculate label size
+                    # Draw bounding box
+                    cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+
+                    # Prepare label
+                    label = f"{class_name}: {conf:.2f}"
+
+                    # Calculate label size and position
+                    font_scale = 0.5
                     (label_width, label_height), baseline = cv2.getTextSize(
-                        label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1
+                        label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 2
                     )
 
-                    # Adjust y position for each label
-                    label_y = y_offset - (len(predictions) - rank + 1) * (label_height + baseline + 3)
-
-                    # Draw label background
-                    alpha = 1.0 if rank == 1 else 0.8  # First prediction more prominent
-                    bg_color = (0, 255, 0) if rank == 1 else (0, 200, 200)
-
+                    # Draw label background with same color as box
                     cv2.rectangle(
                         annotated_frame,
-                        (x1, label_y - 2),
-                        (x1 + label_width + 4, label_y + label_height + baseline),
-                        bg_color,
+                        (x1, y1 - label_height - baseline - 5),
+                        (x1 + label_width, y1),
+                        color,
                         -1
                     )
 
                     # Draw label text
-                    text_color = (0, 0, 0) if rank == 1 else (50, 50, 50)
                     cv2.putText(
                         annotated_frame,
                         label,
-                        (x1 + 2, label_y + label_height),
+                        (x1, y1 - baseline - 5),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         font_scale,
-                        text_color,
-                        1
+                        (0, 0, 0),
+                        2
                     )
 
         else:
-            # Original single-prediction mode
+            # Original single-prediction mode with normal NMS
             for result in results:
                 boxes = result.boxes
                 for box in boxes:
@@ -708,8 +724,8 @@ Examples:
   # Process YouTube video (downloads first - recommended)
   python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID"
 
-  # Show top 3 predictions per object (see alternative classifications)
-  python video_object_detection.py video.mp4 --top-predictions 3
+  # Show ALL detections including overlapping boxes (see all classifications)
+  python video_object_detection.py video.mp4 --show-all-detections
 
   # Stream YouTube video without downloading (less reliable)
   python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID" --stream
@@ -772,11 +788,9 @@ Examples:
     )
 
     parser.add_argument(
-        '--top-predictions',
-        type=int,
-        default=1,
-        choices=[1, 2, 3, 4, 5],
-        help='Number of top class predictions to show per object (default: 1). Useful to see alternative classifications like "tank detected as boat"'
+        '--show-all-detections',
+        action='store_true',
+        help='Show ALL object detections including overlapping ones with different class predictions. Reduces NMS filtering to show what else YOLO detects (e.g., same object detected as both "boat" and "truck")'
     )
 
     parser.add_argument(
@@ -798,7 +812,7 @@ Examples:
         model_name=args.model,
         conf_threshold=args.conf,
         iou_threshold=args.iou,
-        top_predictions=args.top_predictions
+        show_all_detections=args.show_all_detections
     )
 
     # Process video
