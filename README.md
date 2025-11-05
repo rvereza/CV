@@ -73,17 +73,26 @@ python video_object_detection.py /path/to/video.mp4
 
 ### Advanced Options
 
-**Show top N predictions per object (see alternative classifications):**
+**Show all detections including overlapping boxes:**
 ```bash
-# Show top 3 predictions - useful to see what else YOLO thinks an object might be
-python video_object_detection.py video.mp4 --top-predictions 3
-
-# Example: If a tank is detected as "boat: 0.65", you'll also see:
-# [1] boat: 0.65
-# [2] truck: 0.42
-# [3] car: 0.38
+# Show ALL object detections - even overlapping ones with different classifications
+python video_object_detection.py video.mp4 --show-all-detections
 ```
-This is especially useful when YOLO misclassifies objects (e.g., military vehicles as boats) because the COCO dataset doesn't include those classes.
+
+This flag disables aggressive Non-Maximum Suppression (NMS), allowing you to see ALL objects that YOLO detects, even if they overlap. This is especially useful when:
+- YOLO misclassifies objects (e.g., military vehicles detected as both "boat" and "truck")
+- You want to see all alternative classifications with their confidence scores
+- The same object might be detected as multiple different classes
+
+Example: A tank might show multiple overlapping boxes:
+- Green box: `boat: 0.65` (high confidence)
+- Yellow box: `truck: 0.42` (medium confidence)
+- Orange box: `car: 0.38` (lower confidence)
+
+Color coding:
+- **Green** = High confidence (≥60%)
+- **Yellow** = Medium confidence (40-60%)
+- **Orange** = Lower confidence (<40%)
 
 **Custom confidence threshold:**
 ```bash
@@ -157,7 +166,7 @@ Screenshots are saved as `screenshot_0001.jpg`, `screenshot_0002.jpg`, etc.
 | `--iou` | float | `0.45` | IOU threshold for NMS (0.0-1.0) |
 | `--scale` | float | `1.0` | Display window scale factor |
 | `--skip-frames` | int | `0` | Frames to skip (0 = process all) |
-| `--top-predictions` | int | `1` | Number of top predictions to show per object (1-5) |
+| `--show-all-detections` | flag | False | Show ALL detections including overlapping boxes |
 | `--stream` | flag | False | Stream YouTube videos instead of downloading |
 
 ## YouTube Video Processing
@@ -228,20 +237,20 @@ When YOLO encounters objects not in its training data, it will classify them as 
 - **Forklift → Truck**: Similar industrial vehicle characteristics
 - **Specialized vehicles → Car/Truck**: Default to common vehicle classes
 
-**Solution**: Use the `--top-predictions` flag to see what else YOLO thinks the object might be. This gives you insight into the model's uncertainty and alternative classifications.
+**Solution**: Use the `--show-all-detections` flag to see ALL detections including alternative classifications. This disables aggressive filtering and shows you every object YOLO detects with its confidence score.
 
 ```bash
-python video_object_detection.py video.mp4 --top-predictions 3
+python video_object_detection.py video.mp4 --show-all-detections
 ```
 
-You'll see stacked labels like:
+You'll see multiple overlapping boxes with different colors:
 ```
-[1] boat: 0.65
-[2] truck: 0.42
-[3] car: 0.38
+Green box:  boat: 0.65  (highest confidence)
+Yellow box: truck: 0.42 (medium confidence)
+Orange box: car: 0.38   (lower confidence)
 ```
 
-This helps you understand that while YOLO is most confident it's a "boat" (65%), it also considers it might be a "truck" (42%) or "car" (38%).
+This helps you understand that while YOLO is most confident it's a "boat" (65%), it's also detecting it as a "truck" (42%) and "car" (38%) in the same location.
 
 ## Troubleshooting
 
