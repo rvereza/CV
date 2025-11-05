@@ -220,68 +220,68 @@ class LLaVATracker:
         """Draw target symbols for detected objects"""
         annotated = frame.copy()
 
+        if self.simple_mode and detections:
+            # Simple mode: Show red target symbol in center + list of detections
+            h, w = frame.shape[:2]
+            center_x = w // 2
+            center_y = h // 2
+
+            # Draw RED target symbol (military style)
+            target_size = 40
+            red_color = (0, 0, 255)  # RED in BGR
+
+            # Crosshair
+            cv2.line(annotated,
+                    (center_x - target_size, center_y),
+                    (center_x + target_size, center_y),
+                    red_color, 4)
+            cv2.line(annotated,
+                    (center_x, center_y - target_size),
+                    (center_x, center_y + target_size),
+                    red_color, 4)
+
+            # Circles (targeting reticle)
+            cv2.circle(annotated, (center_x, center_y), 20, red_color, 4)
+            cv2.circle(annotated, (center_x, center_y), 4, red_color, -1)
+
+            # Draw detection list in corner
+            y_offset = 30
+            cv2.putText(annotated, "DETECTED:", (10, y_offset),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+
+            y_offset += 35
+            for det in detections:
+                # Get color for this object type
+                color = self.get_color_for_label(det.label)
+                cv2.putText(annotated, f"- {det.label.upper()}", (10, y_offset),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+                y_offset += 30
+
+            return annotated
+
+        # Full mode: traditional bounding boxes
         for det in detections:
             x1, y1, x2, y2 = det.bbox
             color = self.get_color_for_label(det.label)
 
-            # Calculate center of detection box
-            center_x = (x1 + x2) // 2
-            center_y = (y1 + y2) // 2
+            # Draw traditional bounding box
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
 
-            if self.simple_mode:
-                # Draw target symbol (crosshair + circle)
-                target_size = 30  # Fixed size in pixels
+            # Prepare label text
+            label_text = f"{det.label}"
 
-                # Draw crosshair
-                cv2.line(annotated,
-                        (center_x - target_size, center_y),
-                        (center_x + target_size, center_y),
-                        color, 3)
-                cv2.line(annotated,
-                        (center_x, center_y - target_size),
-                        (center_x, center_y + target_size),
-                        color, 3)
+            # Draw label background
+            (text_width, text_height), baseline = cv2.getTextSize(
+                label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+            )
+            cv2.rectangle(annotated,
+                         (x1, y1 - text_height - 10),
+                         (x1 + text_width, y1),
+                         color, -1)
 
-                # Draw circles (targeting reticle)
-                cv2.circle(annotated, (center_x, center_y), 15, color, 3)
-                cv2.circle(annotated, (center_x, center_y), 3, color, -1)
-
-                # Draw label below the target
-                label_text = f"{det.label}"
-                (text_width, text_height), baseline = cv2.getTextSize(
-                    label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
-                )
-
-                # Label background
-                label_y = center_y + target_size + 30
-                cv2.rectangle(annotated,
-                             (center_x - text_width//2 - 5, label_y - text_height - 5),
-                             (center_x + text_width//2 + 5, label_y + 5),
-                             color, -1)
-
-                # Label text
-                cv2.putText(annotated, label_text,
-                           (center_x - text_width//2, label_y),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            else:
-                # Full mode: Draw traditional bounding box
-                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-
-                # Prepare label text
-                label_text = f"{det.label}"
-
-                # Draw label background
-                (text_width, text_height), baseline = cv2.getTextSize(
-                    label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-                )
-                cv2.rectangle(annotated,
-                             (x1, y1 - text_height - 10),
-                             (x1 + text_width, y1),
-                             color, -1)
-
-                # Draw label text
-                cv2.putText(annotated, label_text, (x1, y1 - 5),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            # Draw label text
+            cv2.putText(annotated, label_text, (x1, y1 - 5),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         return annotated
 
