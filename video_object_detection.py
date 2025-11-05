@@ -20,7 +20,7 @@ import os
 class VideoObjectDetector:
     """Fast and robust object detection for video streams."""
 
-    def __init__(self, model_name='yolov8l.pt', conf_threshold=0.25, iou_threshold=0.45):
+    def __init__(self, model_name='yolov8l.pt', conf_threshold=0.25, iou_threshold=0.45, top_predictions=1):
         """
         Initialize the detector with YOLOv8 model.
 
@@ -28,6 +28,7 @@ class VideoObjectDetector:
             model_name: YOLOv8 model to use (default: yolov8l.pt for large model)
             conf_threshold: Confidence threshold for detections
             iou_threshold: IOU threshold for NMS
+            top_predictions: Number of top class predictions to display per object (default: 1)
         """
         print(f"Loading {model_name} model...")
         try:
@@ -39,6 +40,7 @@ class VideoObjectDetector:
 
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
+        self.top_predictions = top_predictions
         self.youtube_url = None
         self.stream_info = None
         self.last_stream_refresh = 0
@@ -234,60 +236,210 @@ class VideoObjectDetector:
             print(f"✗ Reconnection failed: {e}")
             return None
 
+    def calculate_iou(self, box1, box2):
+        """
+        Calculate Intersection over Union (IOU) between two boxes.
+
+        Args:
+            box1, box2: Boxes in format [x1, y1, x2, y2]
+
+        Returns:
+            IOU value
+        """
+        x1_1, y1_1, x2_1, y2_1 = box1
+        x1_2, y1_2, x2_2, y2_2 = box2
+
+        # Calculate intersection
+        x1_i = max(x1_1, x1_2)
+        y1_i = max(y1_1, y1_2)
+        x2_i = min(x2_1, x2_2)
+        y2_i = min(y2_1, y2_2)
+
+        if x2_i < x1_i or y2_i < y1_i:
+            return 0.0
+
+        intersection = (x2_i - x1_i) * (y2_i - y1_i)
+
+        # Calculate union
+        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
+        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
+        union = area1 + area2 - intersection
+
+        return intersection / union if union > 0 else 0.0
+
+    def get_multiple_class_predictions(self, frame):
+        """
+        Get multiple class predictions for same object by running inference
+        with lower confidence threshold.
+
+        Args:
+            frame: Input frame
+
+        Returns:
+            List of grouped detections with multiple class predictions
+        """
+        # Run prediction with very low confidence to get all possible detections
+        low_conf_results = self.model.predict(
+            frame,
+            conf=0.10,  # Very low threshold to catch alternative predictions
+            iou=0.3,  # Lower IOU to keep more overlapping boxes
+            verbose=False
+        )
+
+        grouped_detections = []
+
+        if len(low_conf_results) == 0 or len(low_conf_results[0].boxes) == 0:
+            return grouped_detections
+
+        boxes_data = []
+        for box in low_conf_results[0].boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            conf = float(box.conf[0])
+            cls = int(box.cls[0])
+            class_name = self.model.names[cls]
+            boxes_data.append({
+                'box': [x1, y1, x2, y2],
+                'class': class_name,
+                'conf': conf,
+                'used': False
+            })
+
+        # Group overlapping boxes (likely same object with different class predictions)
+        for i, box_i in enumerate(boxes_data):
+            if box_i['used']:
+                continue
+
+            group = [box_i]
+            box_i['used'] = True
+
+            for j, box_j in enumerate(boxes_data):
+                if i != j and not box_j['used']:
+                    iou = self.calculate_iou(box_i['box'], box_j['box'])
+                    if iou > 0.5:  # Overlapping significantly
+                        group.append(box_j)
+                        box_j['used'] = True
+
+            # Sort group by confidence and take top N
+            group_sorted = sorted(group, key=lambda x: x['conf'], reverse=True)
+            top_n = group_sorted[:self.top_predictions]
+
+            # Create grouped detection with top N predictions
+            main_box = group_sorted[0]['box']
+            predictions = [(item['class'], item['conf']) for item in top_n]
+
+            grouped_detections.append({
+                'box': main_box,
+                'predictions': predictions
+            })
+
+        return grouped_detections
+
     def draw_detections(self, frame, results):
         """
         Draw bounding boxes and labels on frame.
 
         Args:
             frame: Input frame
-            results: YOLO detection results
+            results: YOLO detection results (can be None if using multi-class mode)
 
         Returns:
             Frame with drawn detections
         """
         annotated_frame = frame.copy()
 
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                # Get box coordinates
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
+        # If showing multiple predictions per object, use different approach
+        if self.top_predictions > 1:
+            detections = self.get_multiple_class_predictions(frame)
 
-                # Get confidence and class
-                conf = float(box.conf[0])
-                cls = int(box.cls[0])
-                class_name = self.model.names[cls]
+            for detection in detections:
+                x1, y1, x2, y2 = detection['box']
+                predictions = detection['predictions']
 
                 # Draw bounding box
                 cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-                # Prepare label
-                label = f"{class_name}: {conf:.2f}"
+                # Draw multiple predictions as stacked labels
+                font_scale = 0.45
+                y_offset = y1
 
-                # Calculate label size and position
-                (label_width, label_height), baseline = cv2.getTextSize(
-                    label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-                )
+                for rank, (class_name, conf) in enumerate(predictions, 1):
+                    label = f"[{rank}] {class_name}: {conf:.2f}"
 
-                # Draw label background
-                cv2.rectangle(
-                    annotated_frame,
-                    (x1, y1 - label_height - baseline - 5),
-                    (x1 + label_width, y1),
-                    (0, 255, 0),
-                    -1
-                )
+                    # Calculate label size
+                    (label_width, label_height), baseline = cv2.getTextSize(
+                        label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1
+                    )
 
-                # Draw label text
-                cv2.putText(
-                    annotated_frame,
-                    label,
-                    (x1, y1 - baseline - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 0, 0),
-                    2
-                )
+                    # Adjust y position for each label
+                    label_y = y_offset - (len(predictions) - rank + 1) * (label_height + baseline + 3)
+
+                    # Draw label background
+                    alpha = 1.0 if rank == 1 else 0.8  # First prediction more prominent
+                    bg_color = (0, 255, 0) if rank == 1 else (0, 200, 200)
+
+                    cv2.rectangle(
+                        annotated_frame,
+                        (x1, label_y - 2),
+                        (x1 + label_width + 4, label_y + label_height + baseline),
+                        bg_color,
+                        -1
+                    )
+
+                    # Draw label text
+                    text_color = (0, 0, 0) if rank == 1 else (50, 50, 50)
+                    cv2.putText(
+                        annotated_frame,
+                        label,
+                        (x1 + 2, label_y + label_height),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        font_scale,
+                        text_color,
+                        1
+                    )
+
+        else:
+            # Original single-prediction mode
+            for result in results:
+                boxes = result.boxes
+                for box in boxes:
+                    # Get box coordinates
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+
+                    # Get confidence and class
+                    conf = float(box.conf[0])
+                    cls = int(box.cls[0])
+                    class_name = self.model.names[cls]
+
+                    # Draw bounding box
+                    cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                    # Prepare label
+                    label = f"{class_name}: {conf:.2f}"
+
+                    # Calculate label size and position
+                    (label_width, label_height), baseline = cv2.getTextSize(
+                        label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                    )
+
+                    # Draw label background
+                    cv2.rectangle(
+                        annotated_frame,
+                        (x1, y1 - label_height - baseline - 5),
+                        (x1 + label_width, y1),
+                        (0, 255, 0),
+                        -1
+                    )
+
+                    # Draw label text
+                    cv2.putText(
+                        annotated_frame,
+                        label,
+                        (x1, y1 - baseline - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 0, 0),
+                        2
+                    )
 
         return annotated_frame
 
@@ -556,6 +708,9 @@ Examples:
   # Process YouTube video (downloads first - recommended)
   python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID"
 
+  # Show top 3 predictions per object (see alternative classifications)
+  python video_object_detection.py video.mp4 --top-predictions 3
+
   # Stream YouTube video without downloading (less reliable)
   python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID" --stream
 
@@ -617,6 +772,14 @@ Examples:
     )
 
     parser.add_argument(
+        '--top-predictions',
+        type=int,
+        default=1,
+        choices=[1, 2, 3, 4, 5],
+        help='Number of top class predictions to show per object (default: 1). Useful to see alternative classifications like "tank detected as boat"'
+    )
+
+    parser.add_argument(
         '--stream',
         action='store_true',
         help='Stream YouTube videos instead of downloading (less reliable, may have connection issues)'
@@ -634,7 +797,8 @@ Examples:
     detector = VideoObjectDetector(
         model_name=args.model,
         conf_threshold=args.conf,
-        iou_threshold=args.iou
+        iou_threshold=args.iou,
+        top_predictions=args.top_predictions
     )
 
     # Process video
