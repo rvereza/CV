@@ -88,17 +88,6 @@ class LLaVATracker:
                 return color
         return self.colors["default"]
 
-    def _update_display(self, frame: np.ndarray, message: str = "") -> None:
-        """Update display window to prevent freezing"""
-        if message:
-            # Add small status text in corner
-            display_frame = frame.copy()
-            cv2.putText(display_frame, message, (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            cv2.imshow('LLaVA Object Tracker', display_frame)
-        else:
-            cv2.imshow('LLaVA Object Tracker', frame)
-        cv2.waitKey(1)  # Process window events
 
     def process_frame(self, frame: np.ndarray, frame_number: int,
                      process_every_n: int = 5, display: bool = False) -> Tuple[np.ndarray, List[DetectedObject]]:
@@ -121,12 +110,16 @@ class LLaVATracker:
 
         start_time = time.time()
 
+        # Show "Processing..." on frame while waiting for model
+        if display:
+            processing_frame = frame.copy()
+            cv2.putText(processing_frame, "PROCESSING... (this takes 3-6 seconds)",
+                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.imshow('LLaVA Object Tracker', processing_frame)
+            cv2.waitKey(1)
+
         # Step 1: Initial detection - ask LLaVA what objects are present
         print(f"Frame {frame_number}: Detecting objects...", end='', flush=True)
-
-        # Update display to prevent freezing
-        if display:
-            self._update_display(frame, "Detecting...")
 
         detection_prompt = self.prompt_engine.create_detection_prompt()
         detection_response = self.model.generate(frame, detection_prompt, max_new_tokens=100)
@@ -148,7 +141,6 @@ class LLaVATracker:
         if detected_labels:
             if self.simple_mode:
                 # Simple mode: Just show detected objects with default box in center
-                print(f"  (Simple mode: showing detections without precise location)")
                 h, w = frame.shape[:2]
                 for label in detected_labels:
                     # Create centered box (33% of image size)
@@ -157,6 +149,10 @@ class LLaVATracker:
                     y1 = (h - box_h) // 2
                     bbox = (x1, y1, x1 + box_w, y1 + box_h)
 
+                    # Calculate center for target symbol
+                    center_x = (x1 + x1 + box_w) // 2
+                    center_y = (y1 + y1 + box_h) // 2
+
                     detection = DetectedObject(
                         label=label,
                         bbox=bbox,
@@ -164,15 +160,12 @@ class LLaVATracker:
                         frame_number=frame_number
                     )
                     current_detections.append(detection)
+                    print(f"  Target symbol for '{label}' at center ({center_x}, {center_y})")
             else:
                 # Full mode: Try to localize each object
                 for i, label in enumerate(detected_labels, 1):
                     # Ask LLaVA to locate the object
                     print(f"  Localizing {label} ({i}/{len(detected_labels)})...", end='', flush=True)
-
-                    # Update display to prevent freezing
-                    if display:
-                        self._update_display(frame, f"Localizing {i}/{len(detected_labels)}")
 
                     location_prompt = self.prompt_engine.create_localization_prompt(label)
                     location_response = self.model.generate(frame, location_prompt, max_new_tokens=80)
@@ -357,23 +350,24 @@ class LLaVATracker:
                         print("\nEnd of video reached.")
                         break
 
-                    # Process frame
+                    # Process frame (only every Nth frame in simple mode)
                     annotated_frame, detections = self.process_frame(
                         frame, frame_number, process_every_n, display
                     )
+
+                    # Always update display to keep video flowing
+                    if display:
+                        cv2.imshow('LLaVA Object Tracker', annotated_frame)
+                        cv2.waitKey(1)  # Process events immediately
 
                     # Save to output video
                     if writer:
                         writer.write(annotated_frame)
 
-                    # Display
-                    if display:
-                        cv2.imshow('LLaVA Object Tracker', annotated_frame)
-
                     frame_number += 1
 
-                # Handle keyboard input - ALWAYS call waitKey to process window events
-                key = cv2.waitKey(1) & 0xFF  # Short wait for responsive UI
+                # Handle keyboard input
+                key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     print("\nQuitting...")
                     break
