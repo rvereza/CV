@@ -13,6 +13,8 @@ from pathlib import Path
 import yt_dlp
 from ultralytics import YOLO
 import numpy as np
+import tempfile
+import os
 
 
 class VideoObjectDetector:
@@ -88,12 +90,63 @@ class VideoObjectDetector:
 
         return None, None
 
-    def open_video_source(self, source):
+    def download_youtube_video(self, youtube_url, output_dir=None):
+        """
+        Download YouTube video to local file for reliable processing.
+
+        Args:
+            youtube_url: YouTube video URL
+            output_dir: Directory to save video (default: temp directory)
+
+        Returns:
+            Path to downloaded video file
+        """
+        if output_dir is None:
+            output_dir = tempfile.gettempdir()
+
+        # Create a unique filename
+        video_id = youtube_url.split('=')[-1].split('&')[0]
+        output_path = os.path.join(output_dir, f"youtube_{video_id}.mp4")
+
+        # Check if already downloaded
+        if os.path.exists(output_path):
+            print(f"✓ Using cached video: {output_path}")
+            return output_path
+
+        ydl_opts = {
+            'format': 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best',
+            'outtmpl': output_path,
+            'quiet': False,
+            'no_warnings': False,
+        }
+
+        try:
+            print(f"\n{'='*60}")
+            print(f"Downloading YouTube video for reliable processing...")
+            print(f"This may take a moment depending on video length and internet speed.")
+            print(f"{'='*60}\n")
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([youtube_url])
+
+            if os.path.exists(output_path):
+                print(f"\n✓ Video downloaded successfully: {output_path}")
+                return output_path
+            else:
+                print(f"✗ Download failed - file not created")
+                return None
+
+        except Exception as e:
+            print(f"✗ Error downloading video: {e}")
+            return None
+
+    def open_video_source(self, source, download_youtube=True):
         """
         Open video source (YouTube URL or local file).
 
         Args:
             source: YouTube URL or path to local video file
+            download_youtube: If True, download YouTube videos instead of streaming (more reliable)
 
         Returns:
             OpenCV VideoCapture object
@@ -101,9 +154,22 @@ class VideoObjectDetector:
         # Check if source is a YouTube URL
         if 'youtube.com' in source or 'youtu.be' in source:
             self.youtube_url = source
-            stream_url, self.stream_info = self.get_youtube_stream_url(source)
-            self.last_stream_refresh = time.time()
-            cap = cv2.VideoCapture(stream_url)
+
+            if download_youtube:
+                # Download video for reliable processing (recommended)
+                downloaded_path = self.download_youtube_video(source)
+                if downloaded_path:
+                    cap = cv2.VideoCapture(downloaded_path)
+                else:
+                    print("⚠ Download failed, falling back to streaming...")
+                    stream_url, self.stream_info = self.get_youtube_stream_url(source)
+                    self.last_stream_refresh = time.time()
+                    cap = cv2.VideoCapture(stream_url)
+            else:
+                # Stream directly (less reliable but no download wait)
+                stream_url, self.stream_info = self.get_youtube_stream_url(source)
+                self.last_stream_refresh = time.time()
+                cap = cv2.VideoCapture(stream_url)
         else:
             # Assume it's a local file
             if not Path(source).exists():
@@ -261,7 +327,7 @@ class VideoObjectDetector:
             )
             y_offset += 25
 
-    def process_video(self, source, display_scale=1.0, skip_frames=0):
+    def process_video(self, source, display_scale=1.0, skip_frames=0, download_youtube=True):
         """
         Process video with object detection.
 
@@ -269,8 +335,9 @@ class VideoObjectDetector:
             source: Video source (YouTube URL or file path)
             display_scale: Scale factor for display window (default: 1.0)
             skip_frames: Number of frames to skip between detections (0 = process all)
+            download_youtube: If True, download YouTube videos instead of streaming (default: True)
         """
-        cap = self.open_video_source(source)
+        cap = self.open_video_source(source, download_youtube=download_youtube)
         is_youtube = self.youtube_url is not None
 
         # Create window
@@ -486,10 +553,13 @@ Examples:
   # Run with interactive prompt
   python video_object_detection.py
 
-  # Process YouTube video via command line
+  # Process YouTube video (downloads first - recommended)
   python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID"
 
-  # Process local video file via command line
+  # Stream YouTube video without downloading (less reliable)
+  python video_object_detection.py "https://www.youtube.com/watch?v=VIDEO_ID" --stream
+
+  # Process local video file
   python video_object_detection.py /path/to/video.mp4
 
   # Process with custom confidence threshold
@@ -546,6 +616,12 @@ Examples:
         help='Number of frames to skip between detections (0 = process all frames)'
     )
 
+    parser.add_argument(
+        '--stream',
+        action='store_true',
+        help='Stream YouTube videos instead of downloading (less reliable, may have connection issues)'
+    )
+
     args = parser.parse_args()
 
     # Get video source - either from command line or interactive prompt
@@ -565,7 +641,8 @@ Examples:
     detector.process_video(
         source=source,
         display_scale=args.scale,
-        skip_frames=args.skip_frames
+        skip_frames=args.skip_frames,
+        download_youtube=not args.stream  # Download by default, stream if --stream flag is used
     )
 
 
