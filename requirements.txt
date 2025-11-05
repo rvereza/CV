@@ -1,0 +1,7 @@
+opencv-python>=4.8.0
+ultralytics>=8.0.0
+yt-dlp>=2023.10.13
+numpy>=1.24.0
+torch>=2.0.0
+torchvision>=0.15.0
+pillow>=10.0.0
